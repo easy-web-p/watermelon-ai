@@ -17,6 +17,17 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
+// Enable CORS for all REST API clients, Mobile apps, and third-party services
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // In-memory data store for the backend API endpoints
 interface BackendConversation {
   id: string;
@@ -255,8 +266,99 @@ function checkServerRate(key: string, limit: number, windowMs: number): boolean 
 }
 
 // -------------------------------------------------------------
-// API Endpoints (as defined in the user's architectural guide)
+// Core API Endpoints
 // -------------------------------------------------------------
+
+const VARIETIES_DATA = [
+  {
+    id: "var-1",
+    name: "พันธุ์กินรี (Khinri)",
+    minRipeHz: 125,
+    maxRipeHz: 146,
+    targetBrix: 12.2,
+    unripeThresholdHz: 162,
+    overripeThresholdHz: 110,
+    description: "แตงยอดนิยม เนื้อทรายแน่นหวานฉ่ำ เรโซแนนซ์ชัดเจนย่าน 134 Hz",
+    shape: "กลมรี",
+    rindType: "ลายเขียวเข้มสลับอ่อน",
+  },
+  {
+    id: "var-2",
+    name: "พันธุ์ซอนญ่า (Sonya)",
+    minRipeHz: 120,
+    maxRipeHz: 142,
+    targetBrix: 12.8,
+    unripeThresholdHz: 158,
+    overripeThresholdHz: 108,
+    description: "เนื้อละเอียดสีแดงเข้ม หวานกรอบ ความถี่เรโซแนนซ์ 130 Hz",
+    shape: "กลม",
+    rindType: "ผิวเขียวเข้มเกือบดำ",
+  },
+  {
+    id: "var-3",
+    name: "พันธุ์ตอร์ปิโด (Torpedo)",
+    minRipeHz: 130,
+    maxRipeHz: 152,
+    targetBrix: 11.8,
+    unripeThresholdHz: 168,
+    overripeThresholdHz: 114,
+    description: "ผลทรงรี เปลือกหนาปานกลาง ความถี่สูงกว่าทรงกลมเล็กน้อย 138 Hz",
+    shape: "ยาวรี (ตอร์ปิโด)",
+    rindType: "ลายริ้วเขียวขจี",
+  },
+  {
+    id: "var-4",
+    name: "พันธุ์ไดอาน่า (Diana)",
+    minRipeHz: 132,
+    maxRipeHz: 155,
+    targetBrix: 11.5,
+    unripeThresholdHz: 170,
+    overripeThresholdHz: 115,
+    description: "เปลือกสีทองเนื้อแดง เรโซแนนซ์เปลือกสะท้อนเร็ว 140 Hz",
+    shape: "กลมรี",
+    rindType: "เปลือกเหลืองทอง",
+  },
+  {
+    id: "var-5",
+    name: "พันธุ์ไร้เมล็ด (Seedless)",
+    minRipeHz: 118,
+    maxRipeHz: 138,
+    targetBrix: 12.4,
+    unripeThresholdHz: 154,
+    overripeThresholdHz: 105,
+    description: "เนื้อแน่นไม่มีเมล็ด คลื่นดูดซับสูง เสียงทุ้มก้องกว่าปกติ 128 Hz",
+    shape: "กลม",
+    rindType: "เขียวเข้มลายพราง",
+  },
+];
+
+// 0. GET /api/v1/health
+app.get("/api/v1/health", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "Watermelon AI API",
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development",
+  });
+});
+
+// GET /api/v1/varieties
+app.get("/api/v1/varieties", (req, res) => {
+  res.json(VARIETIES_DATA);
+});
+
+// GET /api/v1/varieties/calibration
+app.get("/api/v1/varieties/calibration", (req, res) => {
+  res.json({
+    profiles: VARIETIES_DATA,
+    acousticFilter: {
+      bandpass: { lowCutHz: 80, highCutHz: 600 },
+      noiseGateThresholdDb: -42,
+      fftSize: 2048,
+    },
+  });
+});
 
 // 1. GET /api/v1/conversations (Enforces Ownership & Search Defense)
 app.get("/api/v1/conversations", (req, res) => {
@@ -396,7 +498,7 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
   }
 
   // Knock analysis calculation
-  let knockAnalysis = undefined;
+  let knockAnalysis: any = undefined;
   if (mode === "knock-analysis") {
     // Generate realistic acoustic metrics based on scientific model
     const freq = Math.floor(125 + Math.random() * 25);
@@ -929,25 +1031,44 @@ app.get("/api/v1/pdpa/export-my-data", (req, res) => {
   res.send(JSON.stringify(exportPayload, null, 2));
 });
 
-// Setup Vite middleware in dev or serve static in prod
-async function startServer() {
-  if (process.env.NODE_ENV === "production") {
-    app.use(express.static(path.resolve(__dirname, "dist")));
-    app.get("*", (req, res) => {
-      res.sendFile(path.resolve(__dirname, "dist", "index.html"));
-    });
-  } else {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🍉 Watermelon AI server running on http://0.0.0.0:${PORT}`);
+// 26. Root API Service Information & Endpoints Directory
+app.get("/", (req, res) => {
+  res.json({
+    service: "Watermelon AI - Acoustic Fruit Ripeness Backend REST API",
+    status: "online",
+    version: "2.0.0",
+    description: "AI-powered acoustic frequency analysis and ripeness assessment REST API for watermelons",
+    docs: "/api/v1/health",
+    endpoints: {
+      health: "/api/v1/health",
+      database_stats: "/api/v1/database/stats",
+      conversations: "/api/v1/conversations",
+      transcriptions: "/api/v1/audio/transcriptions",
+      knock_analysis: "/api/v1/audio/knock-analysis",
+      varieties: "/api/v1/varieties",
+      calibration: "/api/v1/varieties/calibration",
+      media_presigned_url: "/api/v1/media/presigned-upload-url",
+      auth_otp: "/api/v1/auth/otp/send",
+      social_login: "/api/v1/auth/social-login",
+      pdpa_policy: "/api/v1/pdpa/policy",
+    },
+    timestamp: new Date().toISOString(),
   });
-}
+});
 
-startServer();
+// Fallback 404 JSON Handler for unmatched routes
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: "API Endpoint Not Found",
+    path: req.originalUrl,
+    method: req.method,
+    suggestion: "Refer to GET / for available API endpoints",
+  });
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🍉 Watermelon AI Pure REST API server running on http://0.0.0.0:${PORT}`);
+  console.log(`📡 Health Check: http://localhost:${PORT}/api/v1/health`);
+  console.log(`📑 Service Directory: http://localhost:${PORT}/`);
+});
