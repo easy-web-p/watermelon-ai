@@ -1,23 +1,44 @@
 {
-  "name": "watermelon-ai-api",
+  "name": "watermelon-ai",
   "private": true,
   "version": "2.0.0",
   "type": "module",
-  "description": "Pure REST API backend service for Watermelon AI (Acoustic Fruit Ripeness)",
   "scripts": {
     "dev": "tsx server.ts",
+    "build": "vite build",
     "start": "tsx server.ts",
-    "lint": "tsc --noEmit"
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "cap:sync": "cap sync",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios"
   },
   "dependencies": {
+    "@capacitor/android": "^7.0.1",
+    "@capacitor/cli": "^7.0.1",
+    "@capacitor/core": "^7.0.1",
+    "@capacitor/ios": "^7.0.1",
     "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "firebase": "^12.19.0"
+    "firebase": "^12.19.0",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.3.0",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.28.0",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2"
   }

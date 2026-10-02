@@ -33,9 +33,11 @@ export interface DatabaseSchema {
   auditLogs: any[];
   users: any[];
   otpSessions: Record<string, { code: string; expiresAt: number; attempts: number }>;
+  diseaseRecords?: any[];
 }
 
 const defaultSeedData: DatabaseSchema = {
+  diseaseRecords: [],
   conversations: [
     {
       id: "conv-1",

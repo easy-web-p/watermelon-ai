@@ -1,4 +1,18 @@
 {
+  "diseaseRecords": [
+    {
+      "id": "dis-1790919603298",
+      "detectedAt": "2026-10-02T05:40:03.298Z",
+      "farmId": "????????????????????????",
+      "notes": "",
+      "disease_id": "anthracnose",
+      "thai_name": "โรคแอนแทรคโนส (Anthracnose)",
+      "confidence_percentage": 91.6,
+      "severity": "ปานกลางถึงสูง (Moderate-High)",
+      "severity_level": 3,
+      "urgent_action": "ห้ามเก็บเกี่ยวผลขณะแฉะน้ำ และคัดแยกผลที่มีรอยจุดออกจากกองผลผลิตทันที"
+    }
+  ],
   "conversations": [
     {
       "id": "conv-1",
@@ -210,6 +224,13 @@
     }
   ],
   "auditLogs": [
+    {
+      "id": "log-1790919603299-7sro",
+      "action": "DISEASE_DETECT",
+      "actorId": "????????????????????????",
+      "details": "Detected โรคแอนแทรคโนส (Anthracnose) with 91.6% confidence",
+      "timestamp": "2026-10-02T05:40:03.299Z"
+    },
     {
       "id": "log-1790831202461-x8f9",
       "action": "AUTH_SOCIAL_LOGIN",

@@ -1,0 +1,9 @@
+{
+  "appId": "watermelon.ai",
+  "appName": "Watermelon AI",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
