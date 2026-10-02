@@ -1,0 +1,11 @@
+{
+  "name": "Watermelon AI - ระบบแชท AI วิเคราะห์แตงโม",
+  "description": "ระบบแชท AI อัจฉริยะสำหรับวิเคราะห์ความสุกแตงโมจากเสียงเคาะ ตรวจจับภาพ ถอดเสียงพูด พร้อมระบบควบคุมสิทธิ์และความเป็นส่วนตัว PDPA",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

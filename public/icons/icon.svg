@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="rindGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#16a34a"/>
+      <stop offset="100%" stop-color="#14532d"/>
+    </linearGradient>
+    <linearGradient id="fleshGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#b91c1c"/>
+    </linearGradient>
+    <linearGradient id="innerRind" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#86efac"/>
+      <stop offset="100%" stop-color="#4ade80"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer Rind (Circle Slice) -->
+  <circle cx="256" cy="256" r="230" fill="url(#rindGrad)"/>
+  
+  <!-- Outer Striped Patterns -->
+  <path d="M120 70 Q 256 180 392 70" stroke="#052e16" stroke-width="16" fill="none" opacity="0.3" stroke-linecap="round"/>
+  <path d="M60 170 Q 256 300 452 170" stroke="#052e16" stroke-width="16" fill="none" opacity="0.3" stroke-linecap="round"/>
+  <path d="M60 342 Q 256 212 452 342" stroke="#052e16" stroke-width="16" fill="none" opacity="0.3" stroke-linecap="round"/>
+  <path d="M120 442 Q 256 332 392 442" stroke="#052e16" stroke-width="16" fill="none" opacity="0.3" stroke-linecap="round"/>
+
+  <!-- Watermelon Slice Foreground -->
+  <g transform="translate(0, 0)">
+    <!-- White/Light Green Rind Band -->
+    <path d="M 96 350 A 190 190 0 0 0 416 350 Z" fill="url(#innerRind)"/>
+    <!-- Red Flesh -->
+    <path d="M 116 340 A 165 165 0 0 0 396 340 Z" fill="url(#fleshGrad)"/>
+    
+    <!-- Seeds -->
+    <ellipse cx="190" cy="285" rx="7" ry="14" transform="rotate(-25 190 285)" fill="#1c1917"/>
+    <ellipse cx="256" cy="305" rx="7" ry="14" fill="#1c1917"/>
+    <ellipse cx="322" cy="285" rx="7" ry="14" transform="rotate(25 322 285)" fill="#1c1917"/>
+    <ellipse cx="225" cy="245" rx="6" ry="12" transform="rotate(-15 225 245)" fill="#1c1917"/>
+    <ellipse cx="287" cy="245" rx="6" ry="12" transform="rotate(15 287 245)" fill="#1c1917"/>
+  </g>
+  
+  <!-- Sound Wave / Acoustic Rings indicating AI Acoustic Sensing -->
+  <circle cx="256" cy="256" r="245" fill="none" stroke="#22c55e" stroke-width="6" stroke-dasharray="16 12" opacity="0.8"/>
+  <circle cx="256" cy="256" r="215" fill="none" stroke="#86efac" stroke-width="4" stroke-dasharray="8 8" opacity="0.6"/>
+</svg>
