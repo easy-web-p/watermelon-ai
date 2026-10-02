@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  font-family: 'Prompt', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Prompt', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
 }
 
@@ -11,6 +11,27 @@ body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Better Typography Craft */
+h1, h2, h3, h4, h5, h6 {
+  text-wrap: balance;
+}
+
+p, span, li {
+  text-wrap: pretty;
+}
+
+/* Tabular Numbers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tactile Active Feedback */
+button:not(:disabled):active,
+label:has(input[type="file"]):active {
+  transform: scale(0.96);
+  transition: transform 150ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Custom scrollbars */
