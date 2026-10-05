@@ -1038,17 +1038,17 @@ py fit_calibration.py --images data/leaf-cache --write   # วัดเครื
 
 ---
 
-## 7. คำสั่งที่ใช้บ่อย
+---
 
-```bash
-npm run dev          # backend Express (port 3000) — เสิร์ฟ dist/ ด้วย
-npm run dev:web      # frontend Vite (proxy /api ไป localhost:3000)
-npm run build        # build production ไป dist/
-npm run lint         # tsc --noEmit
-npm run test         # vitest run (194 tests, 17 ไฟล์)
-npm run test:watch   # vitest โหมด watch
-npm run cap:sync     # sync ไป Android/iOS
-```
+## 8. Master Specification Adoption (ข้อกำหนดเพิ่มเติมฉบับสำหรับพัฒนา — 5 ต.ค. 2569)
 
-**รันครบระบบ:** เปิด 2 terminal — `npm run dev` แล้ว `npm run dev:web`
-หรือ build แล้วเปิดแค่ `npm run dev` (Express เสิร์ฟทั้ง API และหน้าเว็บที่ origin เดียวกัน)
+นำข้อกำหนดเพิ่มเติม 23 หมวดมาบังคับใช้ในระบบจริง:
+
+1. **Contracts & Master Types:** สร้าง `src/types/resource.ts` กำหนด `ResourceState<T>`, `DiseaseResult`, `ReferenceMetadata`, `UserRole` (RBAC 8 บทบาท) และ `PaymentState`
+2. **Dedicated Diagnostic Workflow (`/disease-scan`):** สร้างหน้า `src/routes/DiseaseScan.tsx` รองรับการตรวจโรคใบโดยตรง แยกบริบทแปลง ชิ้นส่วนพืช ระยะเวลาอาการ และสัดส่วนการระบาดในแปลง
+3. **Route Registry Expansion:** ลงทะเบียน `/disease-scan` และ `/email-recover` ใน `src/App.tsx` พร้อมเพิ่มเมนูใน `src/data/nav.ts` และทางลัดใน `src/routes/FarmPlots.tsx`
+4. **Landing Page Corrections:** แก้ไขการคำนวณ Vitality ไม่แสดง 100% เมื่อผลเป็น `unusable` หรือ `inconclusive`, ติดป้าย `[ ตัวอย่างจำลอง (Demo) ]` และปรับข้อความคะแนนความเชื่อมั่น
+5. **Acoustic & Brix Integrity:** เพิ่มข้อความระบุชัดเจนว่าคลื่นเสียงเคาะเป็นเกณฑ์ทดสอบภาคสนาม (Experimental) ใน `KnockResultCard.tsx` และไม่แสดงค่าความหวานหลอก
+6. **Diseases Catalog Scope:** ปรับหน้า `src/routes/SupportedDiseases.tsx` ให้แยกชัดเจนระหว่าง 4 คลาสที่โมเดลตรวจจับได้จริง และ 8 โรคในคลังความรู้อ้างอิง
+7. **Market Fixture Notice:** ติดป้ายกำกับชัดเจนใน `src/routes/MarketPrices.tsx` ว่าเป็นข้อมูลตัวอย่างจำลองสำหรับการพัฒนา (Survey Fixture)
+

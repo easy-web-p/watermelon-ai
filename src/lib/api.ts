@@ -160,6 +160,16 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     });
   }
 
+  if (response.ok && payload === null) {
+    const isHtml = text.trim().startsWith('<') || (response.headers.get('content-type') ?? '').includes('text/html');
+    if (isHtml) {
+      throw new ApiError(
+        'เซิร์ฟเวอร์ API ยังไม่เปิดให้บริการ หรือกำลังเชื่อมต่อระบบภายนอก',
+        502,
+      );
+    }
+  }
+
   return payload as T;
 }
 

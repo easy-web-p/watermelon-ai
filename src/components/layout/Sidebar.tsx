@@ -142,17 +142,17 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             ประวัติการสนทนาล่าสุด
           </SectionLabel>
           <div className="flex flex-col gap-0.5">
-            {conversations.length === 0 && listError ? (
+            {(!conversations || conversations.length === 0) && listError ? (
               <p className="px-3 py-2 text-caption text-error">
                 <Icon name="error" size={13} className="mr-1 inline align-text-bottom" />
                 โหลดประวัติไม่สำเร็จ — {listError} กดปุ่มรีเฟรชด้านบนเพื่อลองใหม่
               </p>
-            ) : conversations.length === 0 ? (
+            ) : !conversations || conversations.length === 0 ? (
               <p className="px-3 py-2 text-caption text-outline">
                 {listLoading ? 'กำลังโหลดประวัติ...' : 'ยังไม่มีประวัติการสนทนา'}
               </p>
             ) : (
-              conversations.slice(0, 10).map((chat) => {
+              (conversations ?? []).slice(0, 10).map((chat) => {
                 const isActive = path === '/chat' && query.get('thread') === chat.id;
                 return (
                   <div key={chat.id} className="group relative flex items-center">

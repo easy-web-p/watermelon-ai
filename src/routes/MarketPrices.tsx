@@ -45,10 +45,10 @@ export function MarketPrices() {
         <PageHeading
           eyebrow={
             <>
-              <Badge tone="primary">LIVE MARKET TELEMETRY</Badge>
+              <Badge tone="neutral">ข้อมูลตัวอย่างจำลอง (Benchmark Survey)</Badge>
               <span className="flex items-center gap-1.5 text-caption text-on-surface-variant">
-                <Icon name="schedule" size={14} className="text-secondary" />
-                อัปเดตล่าสุดวันนี้ 08:30 น. (ตลาดเปิดเช้า)
+                <Icon name="info" size={14} className="text-secondary" />
+                อ้างอิงข้อมูลสำรวจตลาดค้าส่งกลาง 5 แห่ง (ข้อมูลสำหรับการพัฒนา)
               </span>
             </>
           }

@@ -101,7 +101,7 @@ export function SweetnessScanner() {
     api
       .varieties()
       .then((list) => {
-        if (!cancelled) setVarieties(list);
+        if (!cancelled) setVarieties(Array.isArray(list) ? list : []);
       })
       .catch(() => undefined);
 

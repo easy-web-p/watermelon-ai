@@ -289,9 +289,16 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-start justify-between gap-2 border-b border-outline-variant/20 pb-3">
               <div>
-                <span className="text-caption font-semibold tracking-wider text-outline uppercase">
-                  ผลการวินิจฉัยโรคพืช (AI Diagnostic Result)
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-caption font-semibold tracking-wider text-outline uppercase">
+                    ผลการวินิจฉัยโรคพืช (AI Diagnostic Result)
+                  </span>
+                  {!customImage && (
+                    <span className="rounded-full bg-secondary-container/80 px-2 py-0.5 text-[10px] font-bold text-on-secondary-container">
+                      ตัวอย่างจำลอง (Demo)
+                    </span>
+                  )}
+                </div>
                 <h3 className="text-title-md font-bold text-on-surface mt-0.5">
                   {displayName}
                 </h3>
@@ -299,7 +306,9 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
                   เชื้อสาเหตุ: {displayPathogen}
                 </p>
               </div>
-              <LiveBadge>แม่นยำ {displayConfidence}</LiveBadge>
+              <LiveBadge>
+                {customDiagnosis ? `ความเชื่อมั่น ${displayConfidence}` : `ตัวอย่าง ${displayConfidence}`}
+              </LiveBadge>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-caption">
@@ -309,21 +318,25 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
               </div>
               <div className="rounded-lg bg-surface-lowest p-2.5 shadow-sm">
                 <span className="text-outline">ดัชนีสุขภาพเนื้อเยื่อ</span>
-                <p className="font-bold text-secondary mt-0.5">Vitality: {displayVitality}%</p>
+                <p className="font-bold text-secondary mt-0.5">
+                  {displayVitality !== null ? `Vitality: ${displayVitality}%` : '—'}
+                </p>
               </div>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between text-caption text-on-surface-variant mb-1">
-                <span>ความสมบูรณ์ของใบ</span>
-                <span className="font-bold text-on-surface">{displayVitality}%</span>
+            {displayVitality !== null && (
+              <div>
+                <div className="flex items-center justify-between text-caption text-on-surface-variant mb-1">
+                  <span>ความสมบูรณ์ของใบ</span>
+                  <span className="font-bold text-on-surface">{displayVitality}%</span>
+                </div>
+                <Meter
+                  value={displayVitality}
+                  tone={displayVitality > 70 ? 'secondary' : 'primary'}
+                  label="ดัชนีสุขภาพเนื้อเยื่อ"
+                />
               </div>
-              <Meter
-                value={displayVitality}
-                tone={displayVitality > 70 ? 'secondary' : displayVitality > 40 ? 'primary' : 'primary'}
-                label="ดัชนีสุขภาพเนื้อเยื่อ"
-              />
-            </div>
+            )}
 
             <div className="rounded-lg bg-surface-lowest p-3.5 shadow-sm border border-flesh-border/50">
               <p className="flex items-center gap-1.5 text-label-md font-bold text-on-surface mb-1">

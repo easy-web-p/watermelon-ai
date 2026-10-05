@@ -264,6 +264,23 @@ export function TankMixer({
             </div>
           ) : null}
 
+          <div className="flex flex-col gap-2 rounded-md border border-outline-variant/30 bg-surface-lowest p-3 text-caption text-on-surface-variant">
+            <div className="flex items-start gap-2">
+              <Icon name="swap_horiz" size={15} className="mt-0.5 shrink-0 text-primary" />
+              <div>
+                <span className="font-bold text-on-surface">การจัดการความต้านทาน (FRAC / IRAC):</span>{' '}
+                ห้ามใช้สารที่มีกลไกออกฤทธิ์กลุ่มเดิมซ้ำเกิน 2 รอบการพ่น ควรสลับกลุ่มสารเพื่อลดความเสี่ยงเชื้อดื้อยาหรือแมลงดื้อยา
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <Icon name="science" size={15} className="mt-0.5 shrink-0 text-secondary" />
+              <div>
+                <span className="font-bold text-on-surface">ความเข้ากันได้ของการผสมข้ามสูตร:</span>{' '}
+                หากผสมสารนอกเหนือจากสูตรที่ทดสอบแล้ว ให้แสดงสถานะ <span className="font-semibold text-amber-700">“ยังไม่มีข้อมูลยืนยัน”</span> และต้องทำ Jar Test (ทดสอบในขวดใส 500 มล. ทิ้งไว้ 15 นาที เพื่อดูการตกตะกอน แยกชั้น หรือเกิดความร้อน) ก่อนผสมจริงในถังใหญ่
+              </div>
+            </div>
+          </div>
+
           <p className="flex items-start gap-1.5 text-caption text-on-surface-variant">
             <Icon name="info" size={13} className="mt-0.5 shrink-0" />
             อัตราผสมอ้างอิงฉลากผลิตภัณฑ์และคำแนะนำกรมวิชาการเกษตร — ตรวจสอบฉลากจริงก่อนใช้ทุกครั้ง

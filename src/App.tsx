@@ -44,6 +44,9 @@ const AccountRecovery = lazy(() =>
 const Recipes = lazy(() => import('./routes/Recipes').then((m) => ({ default: m.Recipes })));
 const ApiDocs = lazy(() => import('./routes/ApiDocs').then((m) => ({ default: m.ApiDocs })));
 const DiseaseScan = lazy(() => import('./routes/DiseaseScan').then((m) => ({ default: m.DiseaseScan })));
+const PrivacyRequests = lazy(() =>
+  import('./routes/PrivacyRequests').then((m) => ({ default: m.PrivacyRequests })),
+);
 
 /** Static routes. The dynamic `/status/:code` is matched separately. */
 const ROUTES: Record<string, ComponentType> = {
@@ -70,6 +73,7 @@ const ROUTES: Record<string, ComponentType> = {
   '/data-dispute': DataDispute,
   '/support': Support,
   '/privacy': PrivacyPolicy,
+  '/privacy/requests': PrivacyRequests,
   '/terms': TermsOfService,
   '/signin': SignIn,
   '/login': SignIn,

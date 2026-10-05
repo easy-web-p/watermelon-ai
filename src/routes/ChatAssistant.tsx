@@ -284,7 +284,7 @@ export function ChatAssistant() {
       try {
         const history = await api.listMessages(currentThread);
         if (cancelled) return;
-        if (!history.length) return;
+        if (!history || !Array.isArray(history) || !history.length) return;
         setMessages([GREETING, ...history.map(toFeedMessage)]);
       } catch (error) {
         if (cancelled) return;

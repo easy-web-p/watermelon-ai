@@ -34,7 +34,7 @@ export const useChat = create<ChatStore>((set, get) => ({
     set({ loading: true });
     try {
       const list = await api.listConversations();
-      set({ conversations: list, loading: false, error: null });
+      set({ conversations: Array.isArray(list) ? list : [], loading: false, error: null });
     } catch (err) {
       set({
         loading: false,

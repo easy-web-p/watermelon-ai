@@ -130,6 +130,10 @@ export function KnockResultCard({ result, className }: { result: KnockAnalysis; 
           คุณภาพการบันทึก: {result.qualityStatus === 'passed' ? 'ผ่านเกณฑ์' : result.qualityStatus}
         </Badge>
       ) : null}
+
+      <p className="text-caption text-on-surface-variant/80 border-t border-surface-container-high/60 pt-2">
+        * การประเมินความสุกและความหวานจากความถี่เสียงเป็นเกณฑ์ทดสอบภาคสนาม (Experimental) ยังไม่สามารถรับประกันความหวานทดแทนการผ่าชิมจริง
+      </p>
     </div>
   );
 }

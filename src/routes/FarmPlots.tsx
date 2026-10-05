@@ -156,7 +156,7 @@ export function FarmPlots() {
     api
       .diseaseHistory()
       .then((result) => {
-        if (!cancelled) setHistory(result.records);
+        if (!cancelled) setHistory(Array.isArray(result?.records) ? result.records : []);
       })
       .catch(() => {
         if (!cancelled) setHistoryError(true);
@@ -405,16 +405,10 @@ export function FarmPlots() {
                     variant="ghost"
                     size="sm"
                     className="justify-center text-xs"
-                    onClick={() =>
-                      navigate(
-                        `/chat?q=${encodeURIComponent(
-                          `ต้องการวิเคราะห์อาการผิดปกติของ ${selected.name} (${selected.cultivar})`,
-                        )}`,
-                      )
-                    }
+                    onClick={() => navigate('/disease-scan')}
                   >
-                    <Icon name="photo_camera" size={16} className="text-primary" />
-                    ตรวจโรคพืช
+                    <Icon name="biotech" size={16} className="text-primary" />
+                    ตรวจโรคใบ
                   </Button>
                   <Button
                     variant="ghost"

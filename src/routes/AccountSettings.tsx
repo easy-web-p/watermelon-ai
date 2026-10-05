@@ -499,11 +499,20 @@ export function AccountSettings() {
                       },
                       {
                         icon: 'edit_note',
-                        title: 'แจ้งแก้ไขข้อมูลที่ไม่ถูกต้อง',
-                        body: 'หากผลวิเคราะห์ของ AI คลาดเคลื่อน แจ้งเราเพื่อตรวจสอบและปรับปรุงโมเดล',
-                        cta: 'แจ้งข้อมูล',
+                        title: 'แจ้งแก้ไขผล AI ที่คลาดเคลื่อน',
+                        body: 'หากผลวิเคราะห์โรคหรือความหวานคลาดเคลื่อน แจ้งเพื่อตรวจสอบและปรับปรุงโมเดล',
+                        cta: 'แจ้งแก้ไข AI',
                         tone: 'ghost' as const,
                         onClick: () => navigate('/data-dispute'),
+                        disabled: false,
+                      },
+                      {
+                        icon: 'gavel',
+                        title: 'ยื่นคำร้องขอใช้สิทธิตามกฎหมาย PDPA',
+                        body: 'ขอลบข้อมูล ระงับการประมวลผล หรือใช้สิทธิเจ้าของข้อมูลตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล',
+                        cta: 'ยื่นคำร้อง',
+                        tone: 'ghost' as const,
+                        onClick: () => navigate('/privacy/requests'),
                         disabled: false,
                       },
                     ].map((item) => (
