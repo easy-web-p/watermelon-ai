@@ -59,6 +59,9 @@
 | **Security & Pwd** | `watermelon_ai_security_password` | `src/routes/SecuritySettings.tsx` | `/security` |
 | **LINE Notification**| `line_alert_watermelon_ai_notification_settings`| `src/routes/NotificationSettings.tsx` | `/alerts` |
 | **Data Dispute** | `ai_watermelon_ai_data_dispute_ai_correction` | `src/routes/DataDispute.tsx` | `/data-dispute` |
+| **Disease Scan Workflow** | `leaf_disease_ai_scan_workflow` | `src/routes/DiseaseScan.tsx` | `/disease-scan` |
+| **PDPA Privacy Rights** | `pdpa_statutory_privacy_rights` | `src/routes/PrivacyRequests.tsx` | `/privacy/requests` |
+| **Email Recovery** | `email_account_recovery` | `src/routes/AccountRecovery.tsx` | `/email-recover` |
 | **About Us** | `about_us_watermelon_ai` | `src/routes/About.tsx` | `/about` |
 | **Status (13 หน้า)**| `200`, `201`, `204`, `400`, `401`, `403`, `404`, `409`, `422`, `429`, `500`, `502`, `503` | `src/routes/HttpStatusView.tsx`, `src/data/status.ts` | `/status/:code` |
 

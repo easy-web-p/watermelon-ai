@@ -1051,4 +1051,7 @@ py fit_calibration.py --images data/leaf-cache --write   # วัดเครื
 5. **Acoustic & Brix Integrity:** เพิ่มข้อความระบุชัดเจนว่าคลื่นเสียงเคาะเป็นเกณฑ์ทดสอบภาคสนาม (Experimental) ใน `KnockResultCard.tsx` และไม่แสดงค่าความหวานหลอก
 6. **Diseases Catalog Scope:** ปรับหน้า `src/routes/SupportedDiseases.tsx` ให้แยกชัดเจนระหว่าง 4 คลาสที่โมเดลตรวจจับได้จริง และ 8 โรคในคลังความรู้อ้างอิง
 7. **Market Fixture Notice:** ติดป้ายกำกับชัดเจนใน `src/routes/MarketPrices.tsx` ว่าเป็นข้อมูลตัวอย่างจำลองสำหรับการพัฒนา (Survey Fixture)
+8. **Statutory PDPA Separation (`/privacy/requests`):** แยกหน้ายื่นคำร้องใช้สิทธิตามกฎหมาย PDPA (เข้าถึง, โอนย้าย, แก้ไข, ระงับ, ลบข้อมูล) ออกจากระบบรายงานผลการวินิจฉัย AI คลาดเคลื่อน (`/data-dispute`) อย่างถูกต้องตามระเบียบกฎหมาย พร้อมเพิ่มลิงก์เข้าถึงในหน้า Account Settings
+9. **Tank Mix Compatibility & FRAC/IRAC Warnings (`TankMixer.tsx`):** แสดงคำเตือน "ยังไม่มีข้อมูลยืนยัน" หากผสมนอกเหนือจากสูตรที่รับรอง แนะนำขั้นตอน Jar Test 15 นาที และแสดงข้อกำหนดการสลับกลุ่มกลไกออกฤทธิ์ FRAC / IRAC ป้องกันเชื้อและแมลงดื้อยา
+10. **Build & Quality Gates Verification:** ผ่านเกณฑ์คุณภาพทั้งหมด 100% (`tsc --noEmit` 0 errors, Vitest 202/202 tests passed, Vite build passed)
 
