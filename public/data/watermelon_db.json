@@ -587,10 +587,10 @@
       "title": "ขอคำปรึกษาเรื่องโรคใบจุด 🍉",
       "lastMessage": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:...",
       "createdAt": "2026-10-05T14:50:26.075Z",
-      "updatedAt": "2026-10-05T17:59:34.060Z",
+      "updatedAt": "2026-10-05T17:55:11.059Z",
       "isPinned": false,
       "chatMode": "general",
-      "messageCount": 12
+      "messageCount": 10
     },
     {
       "id": "conv-1791202895052-s7idc2",
@@ -914,25 +914,6 @@
         "createdAt": "2026-10-05T17:55:11.221Z",
         "status": "completed",
         "modelVersion": "watermelon-expert-rules"
-      },
-      {
-        "id": "msg-1791223174060-2g5ea49e",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "user",
-        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T17:59:34.060Z",
-        "status": "completed"
-      },
-      {
-        "id": "msg-1791223174206-2h387b50",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "assistant",
-        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T17:59:34.206Z",
-        "status": "completed",
-        "modelVersion": "watermelon-expert-rules"
       }
     ],
     "test-conv-1791222211894": [
@@ -1098,16 +1079,6 @@
   ],
   "reports": [],
   "trainingCandidates": [
-    {
-      "id": "cand-1791223174206-2i0cfadc",
-      "sourceType": "chat",
-      "sourceId": "msg-1791223174206-2h387b50",
-      "ownerId": "guest-anonymous",
-      "userConsentValid": true,
-      "anonymizationStatus": "pending",
-      "qualityReviewStatus": "pending",
-      "createdAt": "2026-10-05"
-    },
     {
       "id": "cand-1791223080386-2f092e9d",
       "sourceType": "chat",
