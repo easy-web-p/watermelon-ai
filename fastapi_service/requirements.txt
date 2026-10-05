@@ -1,0 +1,9 @@
+# Serving path — no PyTorch. Smart App Control blocks torch's unsigned DLLs
+# on some Windows machines; ONNX Runtime loads fine.
+onnxruntime>=1.20
+Pillow>=10
+numpy>=2
+fastapi>=0.115
+uvicorn>=0.30
+python-multipart>=0.0.18
+pydantic>=2.9

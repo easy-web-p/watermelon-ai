@@ -6,3 +6,34 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Python vision service
+fastapi_service/__pycache__/
+fastapi_service/.venv/
+fastapi_service/data/
+
+# Model files (16 MB binaries). Kept out of Git history on purpose — see
+# fastapi_service/README.md for how to produce them.
+fastapi_service/model.pt
+fastapi_service/model.onnx
+fastapi_service/model.onnx.data
+
+# Produced by a calibration run against a specific set of labelled photos, and
+# only meaningful next to the model.onnx it was fitted for. Committing one would
+# make /health report `calibration.fitted: true` on a machine holding different
+# weights. Ignored on purpose: fit_calibration.py --write regenerates both.
+fastapi_service/calibration.json
+fastapi_service/engine_report.json
+
+# User uploaded audio and images
+uploads/
+
+# Runtime state of the JSON database: the writer lock is pid-specific and the
+# audit trail is append-only evidence, neither of which belongs in a commit.
+data/watermelon_db.lock
+data/audit-log.jsonl
+data/*.bak
+
+# Firebase and Data Connect caches
+.firebase/
+**/.dataconnect/

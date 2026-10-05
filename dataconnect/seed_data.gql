@@ -1,0 +1,12 @@
+# Local Seed Data for Watermelon AI Data Connect Emulator
+# Run with Code Lens in VS Code or via Firebase CLI
+
+mutation SeedInitialData @auth(level: PUBLIC, insecureReason: "Local seed data only") {
+  user_upsert(data: {
+    uid: "seed-farmer-01",
+    email: "farmer@watermelon.ai",
+    displayName: "สมชาย เกษตรกรตัวอย่าง",
+    phoneNumber: "0812345678",
+    province: "สุพรรณบุรี"
+  })
+}

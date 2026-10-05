@@ -1,12 +1,282 @@
 @import "tailwindcss";
 
-:root {
-  font-family: 'Prompt', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color-scheme: light;
+/* ──────────────────────────────────────────────────────────────
+   Crisp Melon Freshness — design tokens
+   Source: D:\stitch_watermelon_ai_chatbot\crisp_melon_freshness\DESIGN.md
+   ────────────────────────────────────────────────────────────── */
+@theme {
+  /* Typefaces: Plus Jakarta Sans for latin, Prompt for Thai glyphs */
+  --font-sans: "Plus Jakarta Sans", "Prompt", ui-sans-serif, system-ui, sans-serif;
+  --font-thai: "Prompt", "Plus Jakarta Sans", sans-serif;
+
+  /* Core roles */
+  --color-primary: #ba0035;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #e12149;
+  --color-on-primary-container: #fffbff;
+  --color-primary-fixed: #ffdada;
+  --color-primary-fixed-dim: #ffb3b6;
+  --color-on-primary-fixed: #40000c;
+  --color-on-primary-fixed-variant: #920028;
+  --color-inverse-primary: #ffb3b6;
+
+  --color-secondary: #1b6b44;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #a3f1bf;
+  --color-on-secondary-container: #217048;
+  --color-secondary-fixed: #a5f3c2;
+  --color-secondary-fixed-dim: #8ad7a7;
+  --color-on-secondary-fixed: #002110;
+  --color-on-secondary-fixed-variant: #005230;
+
+  --color-tertiary: #006a3d;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #268453;
+  --color-on-tertiary-container: #f6fff5;
+  --color-tertiary-fixed: #9af6ba;
+  --color-tertiary-fixed-dim: #7ed9a0;
+  --color-on-tertiary-fixed: #00210f;
+  --color-on-tertiary-fixed-variant: #00522e;
+
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  /* Surfaces */
+  --color-surface: #f9f9ff;
+  --color-surface-dim: #cfdaf2;
+  --color-surface-bright: #f9f9ff;
+  --color-surface-lowest: #ffffff;
+  --color-surface-low: #f0f3ff;
+  --color-surface-container: #e7eeff;
+  --color-surface-high: #dee8ff;
+  --color-surface-highest: #d8e3fb;
+  --color-surface-variant: #d8e3fb;
+  --color-on-surface: #111c2d;
+  --color-on-surface-variant: #5c3f41;
+  --color-inverse-surface: #263143;
+  --color-inverse-on-surface: #ecf1ff;
+  --color-outline: #906f70;
+  --color-outline-variant: #e5bdbe;
+
+  /* Brand washes called out in the spec */
+  --color-melon-tint: #fff5f6;
+  --color-mint-mist: #f0fdf4;
+  --color-rind-border: #dcfce7;
+  --color-flesh-border: #ffe4e8;
+
+  /* Type scale */
+  --text-display-lg: 48px;
+  --text-display-lg--line-height: 56px;
+  --text-display-lg--letter-spacing: -0.02em;
+  --text-display-lg--font-weight: 700;
+
+  --text-display-sm: 34px;
+  --text-display-sm--line-height: 42px;
+  --text-display-sm--letter-spacing: -0.015em;
+  --text-display-sm--font-weight: 700;
+
+  --text-headline-lg: 32px;
+  --text-headline-lg--line-height: 40px;
+  --text-headline-lg--letter-spacing: -0.01em;
+  --text-headline-lg--font-weight: 700;
+
+  --text-headline-md: 24px;
+  --text-headline-md--line-height: 32px;
+  --text-headline-md--font-weight: 600;
+
+  --text-headline-sm: 20px;
+  --text-headline-sm--line-height: 28px;
+  --text-headline-sm--font-weight: 600;
+
+  --text-title-md: 18px;
+  --text-title-md--line-height: 26px;
+  --text-title-md--font-weight: 600;
+
+  --text-body-lg: 16px;
+  --text-body-lg--line-height: 26px;
+
+  --text-body-md: 14px;
+  --text-body-md--line-height: 22px;
+
+  --text-label-lg: 14px;
+  --text-label-lg--line-height: 20px;
+  --text-label-lg--letter-spacing: 0.01em;
+  --text-label-lg--font-weight: 600;
+
+  --text-label-md: 12px;
+  --text-label-md--line-height: 16px;
+  --text-label-md--letter-spacing: 0.02em;
+  --text-label-md--font-weight: 500;
+
+  --text-caption: 11px;
+  --text-caption--line-height: 14px;
+  --text-caption--letter-spacing: 0.03em;
+  --text-caption--font-weight: 500;
+
+  /* Shape — roundedness 3: pills and sweeping corners */
+  --radius-sm: 0.5rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+  --radius-xl: 2rem;
+  --radius-2xl: 3rem;
+
+  /* Elevation tinted with crimson flesh / forest rind */
+  --shadow-rind: 0 1px 12px rgba(186, 0, 53, 0.06);
+  --shadow-card: 0 8px 24px -4px rgba(255, 59, 92, 0.08), 0 2px 6px -1px rgba(27, 107, 68, 0.04);
+  --shadow-dock: 0 20px 32px -8px rgba(30, 41, 59, 0.12), 0 4px 12px -2px rgba(255, 59, 92, 0.06);
+  --shadow-cta: 0 4px 16px rgba(186, 0, 53, 0.24);
+
+  /* Motion — tactile press per the UI craft playbook */
+  --ease-tactile: cubic-bezier(0.2, 0, 0, 1);
 }
 
-body {
-  margin: 0;
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-surface);
+    color: var(--color-on-surface);
+    font-family: var(--font-sans);
+    font-size: var(--text-body-md);
+    line-height: var(--text-body-md--line-height);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
+  }
+
+  /* Thai copy reads better in Prompt; latin stays on Jakarta via the fallback order */
+  :lang(th) {
+    font-family: var(--font-thai);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background-color: var(--color-primary-fixed);
+    color: var(--color-on-primary-fixed);
+  }
+
+  /* Visible focus that survives the pill shapes */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Frosted glass — Level 1 in the elevation spec */
+  .glass {
+    background-color: rgb(255 255 255 / 0.82);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgb(255 59 92 / 0.08);
+  }
+}
+
+/* Material Symbols, sized and weighted to sit on the baseline of label text */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  -webkit-font-feature-settings: "liga";
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+.material-symbols-outlined.is-filled {
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Scanning laser for the live-diagnosis demo */
+@keyframes scan {
+  0%,
+  100% {
+    top: 8%;
+    opacity: 0.35;
+  }
+  50% {
+    top: 88%;
+    opacity: 1;
+  }
+}
+
+/* Toast entrance */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Print: show only the element marked by printElement() */
+@media print {
+  body.is-printing * {
+    visibility: hidden;
+  }
+
+  body.is-printing [data-print-target],
+  body.is-printing [data-print-target] * {
+    visibility: visible;
+  }
+
+  body.is-printing [data-print-target] {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  /* Controls make no sense on paper */
+  body.is-printing [data-print-target] button,
+  body.is-printing [data-print-target] input[type='checkbox'],
+  body.is-printing [data-print-target] [role='switch'] {
+    display: none;
+  }
+
+  @page {
+    margin: 14mm;
+  }
 }

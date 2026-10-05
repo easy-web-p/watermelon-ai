@@ -8,6 +8,7 @@ export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@': path.resolve(rootDir, 'src'),
       },
@@ -16,8 +17,31 @@ export default defineConfig(() => {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
+      // Forward API calls to the Express server so the browser stays same-origin.
+      proxy: {
+        '/api': {
+          target: process.env.API_PROXY_TARGET ?? 'http://localhost:3000',
+          changeOrigin: true,
+        },
+      },
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Ignore database, uploads and logs so writes from chat, scanning and storage
+      // do not trigger full page reloads in the browser.
+      watch:
+        process.env.DISABLE_HMR === 'true'
+          ? null
+          : {
+              ignored: [
+                '**/data/**',
+                '**/uploads/**',
+                '**/*.log',
+                '**/.git/**',
+                '**/tmp/**',
+                '**/dist/**',
+                '**/coverage/**',
+                '**/.system_generated/**',
+              ],
+            },
     },
   };
 });

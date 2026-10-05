@@ -20,6 +20,14 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Watermelon AI ขอใช้กล้องเพื่อถ่ายภาพใบและลำต้นแตงโมสำหรับวินิจฉัยโรคพืชด้วย AI</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Watermelon AI ขอใช้ไมโครโฟนเพื่อบันทึกเสียงเคาะผลแตงโมสำหรับประเมินความสุกและค่าความหวาน Brix</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Watermelon AI ขอเข้าถึงคลังรูปภาพเพื่อเลือกภาพใบแตงโมที่ถ่ายไว้แล้วมาวินิจฉัยโรค</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Watermelon AI ขอบันทึกภาพผลการวินิจฉัยลงคลังรูปภาพของคุณ</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

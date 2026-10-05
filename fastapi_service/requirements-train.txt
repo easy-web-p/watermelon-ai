@@ -1,0 +1,8 @@
+# Training and the one-off ONNX export only. Install these on a machine where
+# PyTorch can actually load, then run export_onnx.py and copy model.onnx over.
+-r requirements.txt
+torch>=2.12
+torchvision>=0.27
+# torch.onnx.export in torch 2.x routes through onnxscript.
+onnx>=1.17
+onnxscript>=0.2

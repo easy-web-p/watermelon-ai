@@ -38,4 +38,22 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Disease diagnosis from leaf photos -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Knock-sound ripeness analysis -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- Picking an existing photo. READ_MEDIA_IMAGES is Android 13+; the
+         legacy permission is capped so it is not requested on newer devices. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- The camera is optional: the app still works on a device without one. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 </manifest>

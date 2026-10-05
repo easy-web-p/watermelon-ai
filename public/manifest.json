@@ -1,42 +1,58 @@
 {
-  "name": "Watermelon AI - ระบบวิเคราะห์แตงโมอัจฉริยะ",
+  "name": "Watermelon AI - ผู้ช่วยอัจฉริยะเรื่องแตงโม",
   "short_name": "แตงโม AI",
-  "description": "วิเคราะห์ความสุกแตงโมจากเสียงเคาะในแปลงเกษตร บันทึกข้อมูลและทำงานแบบออฟไลน์",
-  "start_url": "/",
+  "description": "วินิจฉัยโรคแตงโมจากภาพถ่าย ประเมินความหวาน Brix จากเสียงเคาะ ติดตามราคาตลาด และวางแผนดูแลแปลงตลอดฤดูกาล",
+  "start_url": "/#/chat",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#FFFBEF",
-  "theme_color": "#059669",
+  "background_color": "#f9f9ff",
+  "theme_color": "#ba0035",
   "orientation": "portrait-primary",
   "lang": "th",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities", "food"],
   "icons": [
     {
       "src": "/icons/icon.svg",
-      "sizes": "192x192 512x512",
+      "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ],
   "shortcuts": [
     {
-      "name": "เคาะแตงโม (Acoustic AI)",
-      "short_name": "เคาะแตงโม",
-      "description": "อัดเสียงเคาะเพื่อวิเคราะห์ความสุกทันที",
-      "url": "/chat?mode=knock-analysis",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "96x96" }]
+      "name": "วินิจฉัยโรคจากภาพใบ",
+      "short_name": "สแกนโรค",
+      "description": "ถ่ายรูปใบหรือลำต้นให้ AI วิเคราะห์โรคทันที",
+      "url": "/#/chat",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     },
     {
-      "name": "ห้องทดลองแตงโม (Lab)",
-      "short_name": "ห้องทดลอง",
-      "description": "ตรวจสอบตัวอย่างและออกใบรับรองคุณภาพ",
-      "url": "/lab",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "96x96" }]
+      "name": "วัดความหวานจากเสียงเคาะ",
+      "short_name": "วัดความหวาน",
+      "description": "อัดเสียงเคาะเพื่อประเมินค่า Brix และระยะความสุก",
+      "url": "/#/scanner",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     },
     {
-      "name": "เครื่องจำลองเสียงเคาะ",
-      "short_name": "จำลองเสียง",
-      "description": "ฟังเปรียบเทียบคลื่นเสียงแตงสุก-ดิบ-กลวง",
-      "url": "/simulator",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "96x96" }]
+      "name": "ราคาตลาดวันนี้",
+      "short_name": "ราคาตลาด",
+      "description": "เช็กราคารับซื้อจาก 5 ตลาดกลางทั่วประเทศ",
+      "url": "/#/market",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "จัดการแปลงเพาะปลูก",
+      "short_name": "แปลงของฉัน",
+      "description": "ดูสุขภาพแปลง ความชื้นดิน และงานที่ถึงกำหนด",
+      "url": "/#/plots",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     }
   ]
 }

@@ -14,5 +14,13 @@
     ],
     "cleanUrls": true,
     "trailingSlash": false
+  },
+  "dataconnect": {
+    "source": "dataconnect"
+  },
+  "emulators": {
+    "dataconnect": {
+      "port": 9399
+    }
   }
 }

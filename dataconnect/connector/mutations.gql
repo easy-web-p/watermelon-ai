@@ -1,0 +1,85 @@
+# Watermelon AI Data Connect Mutations
+
+mutation UpsertUserProfile(
+  $email: String!,
+  $displayName: String,
+  $phoneNumber: String,
+  $province: String
+) @auth(level: USER) {
+  user_upsert(data: {
+    uid_expr: "auth.uid",
+    email: $email,
+    displayName: $displayName,
+    phoneNumber: $phoneNumber,
+    province: $province
+  })
+}
+
+mutation CreatePlot(
+  $name: String!,
+  $cultivar: String!,
+  $areaRai: Float!,
+  $plantDate: Date,
+  $harvestDateTarget: Date,
+  $soilType: String
+) @auth(level: USER) {
+  plot_insert(data: {
+    owner: { uid_expr: "auth.uid" },
+    name: $name,
+    cultivar: $cultivar,
+    areaRai: $areaRai,
+    plantDate: $plantDate,
+    harvestDateTarget: $harvestDateTarget,
+    soilType: $soilType,
+    status: "active"
+  })
+}
+
+mutation DeletePlot($id: UUID!) @auth(level: USER) {
+  plot_delete(
+    first: { where: {
+      id: { eq: $id },
+      owner: { uid: { eq_expr: "auth.uid" } }
+    }}
+  )
+}
+
+mutation CreateDiseaseRecord(
+  $diseaseName: String!,
+  $diseaseNameTh: String!,
+  $confidence: Float!,
+  $severity: String,
+  $imageUrl: String,
+  $recommendation: String
+) @auth(level: USER) {
+  diseaseRecord_insert(data: {
+    owner: { uid_expr: "auth.uid" },
+    diseaseName: $diseaseName,
+    diseaseNameTh: $diseaseNameTh,
+    confidence: $confidence,
+    severity: $severity,
+    imageUrl: $imageUrl,
+    recommendation: $recommendation
+  })
+}
+
+mutation CreateChatSession($title: String!) @auth(level: USER) {
+  chatSession_insert(data: {
+    owner: { uid_expr: "auth.uid" },
+    title: $title
+  })
+}
+
+mutation AddChatMessage(
+  $sessionId: UUID!,
+  $sender: String!,
+  $content: String!,
+  $mediaUrl: String
+) @auth(level: USER, insecureReason: "User adds message to their active session") {
+  chatMessage_insert(data: {
+    session: { id: $sessionId },
+    sender: $sender,
+    content: $content,
+    mediaUrl: $mediaUrl
+  })
+}

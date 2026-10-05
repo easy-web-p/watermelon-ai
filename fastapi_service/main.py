@@ -1,231 +1,265 @@
-import io
+"""Watermelon leaf disease vision service.
+
+This process does exactly one thing: turn an image into evidence about the
+four classes in ``model.py``. It deliberately knows nothing about Thai disease
+names, chemical rates or pre-harvest intervals — that mapping lives in
+``src/lib/diseaseModel.ts`` so there is a single agronomic source of truth
+instead of one copy per language.
+
+The one kind of Thai text it does produce is photography guidance
+("ภาพเบลอ…ให้แตะโฟกัสที่ใบ"). That is not an exception to the boundary above:
+how readable a photo is, is a property of the image, which is this service's
+subject. What the photo *means* for a crop is not.
+
+Inference runs on ONNX Runtime, not PyTorch. ``export_onnx.py`` produces
+``model.onnx`` once from the training checkpoint and verifies it against
+PyTorch before writing it; after that the serving path needs neither torch nor
+its unsigned DLLs, which Smart App Control blocks on some Windows machines.
+
+The reading of that checkpoint lives in ``inference.py`` — multi-scale crops,
+test-time augmentation, temperature scaling and a deliberately asymmetric
+aggregation rule — and the photo-readability checks live in ``leafcheck.py``.
+Both are worth reading before changing anything here; the header of
+``inference.py`` explains which measured failure each mechanism targets.
+
+It also never guesses. If the model file is missing the process refuses to
+start, and if an image cannot be decoded the caller gets a 4xx. An earlier
+version of this file answered with ``random.choices()`` over a disease
+catalogue, which looked like a working demo and would have had farmers
+spraying fungicide chosen by a random number generator.
+"""
+
+from __future__ import annotations
+
 import base64
-import random
-from typing import Optional
-from fastapi import FastAPI, File, UploadFile, HTTPException
+import binascii
+import hashlib
+import io
+import json
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Literal
+
+import numpy as np
+import onnxruntime as ort
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from PIL import Image
+from PIL import Image, ImageOps, UnidentifiedImageError
+from pydantic import BaseModel, Field
+
+import inference
+from model import CLASSES, IMAGE_SIZE, preprocess, softmax
+
+MODEL_PATH = Path(os.getenv("MODEL_PATH", Path(__file__).with_name("model.onnx")))
+METRICS_PATH = Path(__file__).with_name("metrics.json")
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+Mode = Literal["fast", "balanced", "deep"]
+DEFAULT_MODE: Mode = os.getenv("VISION_MODE", inference.DEFAULT_MODE)  # type: ignore[assignment]
+
+
+class Base64PredictRequest(BaseModel):
+    imageBase64: str = Field(min_length=1)
+    mode: Mode | None = None
+
+
+def _decode_image(data: bytes) -> Image.Image:
+    """Verify then decode. ``verify()`` invalidates the handle, hence two opens.
+
+    Returns a PIL image rather than a preprocessed batch: the engine needs the
+    full-resolution pixels to crop and to measure focus from. EXIF rotation is
+    applied, because a photo taken in portrait arrives rotated and a leaf lying
+    on its side is a different image to a network trained on upright ones.
+    """
+    try:
+        with Image.open(io.BytesIO(data)) as probe:
+            probe.verify()
+        with Image.open(io.BytesIO(data)) as image:
+            return ImageOps.exif_transpose(image).convert("RGB")
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"ไฟล์ภาพเสียหายหรืออ่านไม่ได้: {exc}") from exc
+
+
+def _resolve_mode(requested: str | None) -> Mode:
+    mode = requested or DEFAULT_MODE
+    if mode not in inference.MODES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"mode ต้องเป็นหนึ่งใน {', '.join(inference.MODES)} (ได้รับ '{mode}')",
+        )
+    return mode  # type: ignore[return-value]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if not MODEL_PATH.exists():
+        raise RuntimeError(
+            f"ไม่พบไฟล์โมเดล {MODEL_PATH} — รัน export_onnx.py บนเครื่องที่มี PyTorch "
+            "เพื่อแปลง model.pt เป็น model.onnx แล้วนำมาวางที่โฟลเดอร์นี้ (ดู README.md)"
+        )
+
+    sidecar = MODEL_PATH.with_suffix(MODEL_PATH.suffix + ".json")
+    meta = json.loads(sidecar.read_text(encoding="utf-8")) if sidecar.exists() else {}
+    if meta.get("classes") and meta["classes"] != CLASSES:
+        raise RuntimeError(
+            f"ลำดับคลาสของโมเดลไม่ตรงกับโค้ด: model={meta['classes']} code={CLASSES}. "
+            "ถ้าปล่อยผ่าน ผลทำนายทุกภาพจะถูกจับคู่กับโรคผิดตัว"
+        )
+    # The graph has a fixed spatial input, so a mismatch here would fail on the
+    # first request rather than at startup — and only on machines that get a
+    # request. Checked now so a bad deploy cannot look healthy.
+    if meta.get("image_size") and meta["image_size"] != IMAGE_SIZE:
+        raise RuntimeError(
+            f"โมเดลถูกส่งออกที่ {meta['image_size']}px แต่ model.py เตรียมภาพที่ {IMAGE_SIZE}px — "
+            f"แก้ IMAGE_SIZE ใน model.py ให้ตรงกันก่อนเปิดเซอร์วิส"
+        )
+    if DEFAULT_MODE not in inference.MODES:
+        raise RuntimeError(
+            f"VISION_MODE={DEFAULT_MODE!r} ไม่ถูกต้อง — รองรับ {', '.join(inference.MODES)}"
+        )
+
+    session = ort.InferenceSession(str(MODEL_PATH), providers=["CPUExecutionProvider"])
+
+    # A head that does not emit one score per class means the file and the code
+    # disagree about the task; a wrong-length output would be silently sliced.
+    output_shape = session.get_outputs()[0].shape
+    if output_shape[-1] not in (len(CLASSES), None, "classes"):
+        raise RuntimeError(f"โมเดลให้ผลลัพธ์ {output_shape} ไม่ตรงกับ {len(CLASSES)} คลาสในโค้ด")
+
+    # A corrupt calibration file raises here rather than being skipped, so the
+    # service can never serve raw scores while reporting them as calibrated.
+    calibration = inference.load_calibration(MODEL_PATH)
+
+    digest = hashlib.sha256(MODEL_PATH.read_bytes()).hexdigest()[:12]
+    app.state.session = session
+    app.state.input_name = session.get_inputs()[0].name
+    app.state.output_name = session.get_outputs()[0].name
+    app.state.architecture = meta.get("architecture", "efficientnet_b0")
+    app.state.model_version = f"{app.state.architecture}@{digest}"
+    app.state.trained_epoch = meta.get("trained_epoch")
+    app.state.calibration = calibration
+    yield
+    app.state.session = None
+
 
 app = FastAPI(
-    title="Watermelon Disease Detection AI Microservice",
-    description="ระบบ AI อัจฉริยะตรวจจับและวินิจฉัยโรคพืชในแตงโมจากภาพถ่ายใบ ผล และเถา",
-    version="1.0.0"
+    title="Watermelon Leaf Disease Vision Service",
+    description=(
+        "จำแนกภาพใบแตงโม 4 คลาส ด้วยการรวมผลหลายมุมและหลายบริเวณของภาพ "
+        "ส่งคืนคะแนนความน่าจะเป็นพร้อมหลักฐานประกอบ ไม่ตีความเป็นคำวินิจฉัย"
+    ),
+    version="3.0.0",
+    lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# The Node API is the only intended caller; browsers reach this through it.
+origins = [o.strip() for o in os.getenv("VISION_CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET", "POST"], allow_headers=["*"])
 
-class Base64DetectRequest(BaseModel):
-    imageBase64: str
-    farmId: Optional[str] = "farm-01"
-    note: Optional[str] = ""
-
-DISEASE_CATALOG = {
-    "downy_mildew": {
-        "id": "downy_mildew",
-        "thai_name": "โรคราน้ำค้างแตงโม (Downy Mildew)",
-        "scientific_name": "Pseudoperonospora cubensis",
-        "category": "เชื้อราทางใบ",
-        "severity": "สูง (High)",
-        "severity_level": 4,
-        "symptoms": "ใบลายแผลสีเหลืองเป็นเหลี่ยมตามเส้นใบ ด้านใต้ใบพบขุยสปอร์สีเทาอมม่วง หากระบาดรุนแรงใบจะไหม้แห้งกรอบทั้งต้น",
-        "chemical_control": [
-            "เมทาแลกซิล (Metalaxyl 35% DS) อัตรา 30-40 กรัม/น้ำ 20 ลิตร",
-            "ไดเมโทมอร์ฟ (Dimethomorph 50% WP) อัตรา 10-20 กรัม/น้ำ 20 ลิตร",
-            "แมนโคเซบ (Mancozeb 80% WP) พ่นป้องกันก่อนฝนตก"
-        ],
-        "organic_control": [
-            "เชื้อราไตรโคเดอร์มา (Trichoderma harzianum) สดหรือผง สเปรย์ช่วงเย็น",
-            "น้ำหมักเปลือกมังคุดผสมยาเส้นช่วยยับยั้งการงอกของสปอร์",
-            "ตัดแต่งใบด้านล่างที่เป็นโรคเผาทำลายทันที"
-        ],
-        "prevention": "หลีกเลี่ยงการให้น้ำแบบสปริงเกลอร์ที่ใบเปียกชื้นข้ามคืน ปลูกระยะห่าง 50-80 ซม. ให้อากาศถ่ายเทสะดวก",
-        "urgent_action": "พ่นสารป้องกันกำจัดทันทีหลังฝนหยุดตกติดต่อกัน 2 วัน และแยกแปลงปลูกใกล้เคียง"
-    },
-    "anthracnose": {
-        "id": "anthracnose",
-        "thai_name": "โรคแอนแทรคโนส (Anthracnose)",
-        "scientific_name": "Colletotrichum orbiculare",
-        "category": "เชื้อราทำลายใบและผล",
-        "severity": "ปานกลางถึงสูง (Moderate-High)",
-        "severity_level": 3,
-        "symptoms": "แผลบนใบมีลักษณะกลมสีน้ำตาลคล้ำ มีขอบชัดเจน บนผลแตงโมพบแผลยุบตัวเป็นหลุมฉ่ำน้ำ มีจุดตุ่มสปอร์สีส้มอมชมพู",
-        "chemical_control": [
-            "อะซ็อกซีสโตรบิน (Azoxystrobin 25% SC) อัตรา 10-15 ซีซี/น้ำ 20 ลิตร",
-            "ไดฟีโนโคนาโซล (Difenoconazole 25% EC) อัตรา 15 ซีซี/น้ำ 20 ลิตร",
-            "โพรคลอราซ (Prochloraz 45% EC)"
-        ],
-        "organic_control": [
-            "แบคทีเรียบาซิลลัส ซับทิลิส (Bacillus subtilis เบอร์ 3) สเปรย์สลับ 5-7 วัน",
-            "สารสกัดน้ำมันสะเดาและขมิ้นชันยับยั้งสปอร์"
-        ],
-        "prevention": "คลุมโคนแปลงด้วยพลาสติกเพื่อกันหยดน้ำกระเด็นพาเชื้อจากดินขึ้นสู่ใบแตงโม",
-        "urgent_action": "ห้ามเก็บเกี่ยวผลขณะแฉะน้ำ และคัดแยกผลที่มีรอยจุดออกจากกองผลผลิตทันที"
-    },
-    "gummy_stem_blight": {
-        "id": "gummy_stem_blight",
-        "thai_name": "โรคยางไหล / เถาแตก (Gummy Stem Blight)",
-        "scientific_name": "Didymella bryoniae (Stagonosporopsis cucurbitacearum)",
-        "category": "เชื้อราเข้าทำลายเถาและลำต้น",
-        "severity": "วิกฤต (Critical - ต้นแห้งตายเฉียบพลัน)",
-        "severity_level": 5,
-        "symptoms": "บริเวณโคนเถาแตกและมียางสีน้ำตาลแดงเหนียวไหลซึม ใบมีแผลสีน้ำตาลไหม้ลามจากขอบใบ ต้นโทรมเหี่ยวเร็ว",
-        "chemical_control": [
-            "คาร์เบนดาซิม (Carbendazim 50% SC) ทาบริเวณรอยแตกของเถา",
-            "โพรคลอราซ ผสม โพรพิโคนาโซล ราดโคนต้น",
-            "ออกซีคอปเปอร์คลอไรด์ สเปรย์ป้องกันบริเวณโคนต้น"
-        ],
-        "organic_control": [
-            "ใช้ปูนขาวผสมกำมะถันผงทาบริเวณแผลยางไหลที่โคนเถา",
-            "ราดเชื้อราไตรโคเดอร์มาผสมรำข้าวรอบบริเวณโคนต้นป้องกันการลุกลามในดิน"
-        ],
-        "prevention": "งดการใช้มีดตัดแต่งเถาโดยไม่ผ่านการฆ่าเชื้อด้วยแอลกอฮอล์ และปรับค่ากรด-ด่างดิน (pH 6.0-6.5)",
-        "urgent_action": "หยุดให้น้ำบริเวณโคนต้นชั่วคราวเพื่อลดความชื้นสะสมรอบเถา"
-    },
-    "fusarium_wilt": {
-        "id": "fusarium_wilt",
-        "thai_name": "โรคเถาเหี่ยวฟิวซาเรียม (Fusarium Wilt)",
-        "scientific_name": "Fusarium oxysporum f. sp. niveum",
-        "category": "เชื้อราในดินอุดตันท่อน้ำ",
-        "severity": "สูงมาก (High - ฟื้นตัวยาก)",
-        "severity_level": 4,
-        "symptoms": "เถาแตงโมเหี่ยวเฉาในเวลากลางวันแดดจัดและฟื้นในเวลากลางคืน ผ่าดูลำต้นพบท่อน้ำท่ออาหารเปลี่ยนเป็นสีน้ำตาลคล้ำ",
-        "chemical_control": [
-            "ไทแรม (Thiram) คลุกเมล็ดพันธุ์ก่อนเพาะ",
-            "เบโนมิล (Benomyl) หรือ เมทิลไทโอฟาเนต ราดหลุมปลูก"
-        ],
-        "organic_control": [
-            "ใส่ปุ๋ยหมักมูลไส้เดือนและเชื้อราไตรโคเดอร์มาปรับสภาพดินก่อนย้ายกล้า",
-            "ปลูกพืชตระกูลถั่วหรือข้าวโพดสลับแปลงเพื่อตัดวงจรเชื้อในดิน"
-        ],
-        "prevention": "ใช้ต้นตอแตงโมทนโรค (เช่น ต่อกิ่งบนต้นตอฟักทองหรือน้ำเต้า) และหลีกเลี่ยงการปลูกแตงโมซ้ำที่เดิมเกิน 3 ปี",
-        "urgent_action": "ถอนต้นที่เป็นโรคใส่ถุงพลาสติกนำไปเผาทำลายนอกแปลงทันที ห้ามไถกลบลงดิน"
-    },
-    "mosaic_virus": {
-        "id": "mosaic_virus",
-        "thai_name": "โรคไวรัสใบด่างแตงโม (Watermelon Mosaic Virus - WMV)",
-        "scientific_name": "Watermelon mosaic virus (Potyvirus)",
-        "category": "ไวรัสพืชถ่ายทอดโดยแมลงพาหะ",
-        "severity": "ปานกลาง (ผลผลิตลดลง ผลเสียรูปทรง)",
-        "severity_level": 3,
-        "symptoms": "ยอดแตงโมชะงัก ใบลายด่างเหลืองสลับเขียวเข้ม ผิวใบพุพอง หงิกงอ ผลที่ติดมีลักษณะบิดเบี้ยว เนื้อด้านในกระด้าง",
-        "chemical_control": [
-            "ไม่มีสารเคมีฆ่าเชื้อไวรัสโดยตรง ต้องควบคุมแมลงพาหะ (เพลี้ยอ่อน)",
-            "อิมิดาคลอพริด (Imidacloprid) หรือ อะเซทามิพริด (Acetamiprid) พ่นกำจัดเพลี้ยอ่อน"
-        ],
-        "organic_control": [
-            "ติดตั้งกับดักกาวสีเหลืองล่อเพลี้ยอ่อนในแปลง",
-            "พ่นน้ำส้มควันไม้ผสมสารสกัดยาเส้นขับไล่แมลงปากดูด",
-            "บำรุงด้วยธาตุสังกะสีและแคลเซียม-โบรอนเพิ่มความทนทานของเซลล์พืช"
-        ],
-        "prevention": "กำจัดวัชพืชรอบแปลงซึ่งเป็นแหล่งอาศัยของเพลี้ยอ่อน และใช้เมล็ดพันธุ์ปลอดเชื้อ",
-        "urgent_action": "สำรวจยอดแตงโมหากพบเพลี้ยอ่อนให้ฉีดพ่นกำจัดทันทีเพื่อตัดตอนการแพร่กระจาย"
-    },
-    "healthy": {
-        "id": "healthy",
-        "thai_name": "ใบและผลแตงโมสมบูรณ์แข็งแรง (Healthy Plant)",
-        "scientific_name": "Citrullus lanatus (Thunb.)",
-        "category": "พืชมีสุขภาพดี",
-        "severity": "ปกติ (Healthy)",
-        "severity_level": 0,
-        "symptoms": "ใบมีสีเขียวสดใส สม่ำเสมอ เส้นใบแข็งแรง ผิวใบเรียบไม่มีรอยไหม้ จุดด่าง หรือคราบรา ผลแตงโมเจริญเติบโตสมบูรณ์",
-        "chemical_control": [],
-        "organic_control": [
-            "ให้น้ำหมักชีวภาพหรือปุ๋ยอินทรีย์ทางดินสม่ำเสมอ",
-            "พ่นไตรโคเดอร์มาป้องกันเชื้อราเดือนละ 1-2 ครั้ง"
-        ],
-        "prevention": "รักษาความชื้นดินให้สม่ำเสมอ ให้แสงแดดเพียงพออย่างน้อย 6-8 ชั่วโมงต่อวัน",
-        "urgent_action": "พร้อมสำหรับการดูแลรักษาตามวงรอบปกติ"
-    }
-}
-
-@app.get("/")
-def api_info():
-    return {
-        "service": "Watermelon AI Disease Detection API",
-        "framework": "FastAPI (Python)",
-        "status": "online",
-        "supported_diseases": list(DISEASE_CATALOG.keys()),
-        "endpoints": {
-            "health": "/health",
-            "catalog": "/api/v1/diseases",
-            "detect_json": "/api/v1/ai/detect-disease-base64",
-            "detect_file": "/api/v1/ai/detect-disease-file"
-        }
-    }
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "fastapi-watermelon-vision", "version": "1.0.0"}
-
-@app.get("/api/v1/diseases")
-def get_all_diseases():
-    return list(DISEASE_CATALOG.values())
-
-@app.post("/api/v1/ai/detect-disease-base64")
-async def detect_disease_base64(payload: Base64DetectRequest):
-    if not payload.imageBase64:
-        raise HTTPException(status_code=400, detail="กรุณาระบุข้อมูล imageBase64")
-
-    # สุ่มผลวิเคราะห์จำลอง หรือตรวจจับจากคุณลักษณะภาพ
-    # (ใน Production จะต่อโมเดล PyTorch/MobileNet หรือ Gemini Vision)
-    keys = ["downy_mildew", "anthracnose", "gummy_stem_blight", "fusarium_wilt", "mosaic_virus", "healthy"]
-    # ให้น้ำหนักกับโรคที่พบบ่อยในสวนแตงโมไทย
-    chosen_key = random.choices(keys, weights=[35, 25, 15, 10, 10, 5], k=1)[0]
-    disease = DISEASE_CATALOG[chosen_key]
-    confidence = round(random.uniform(0.91, 0.985), 3)
-
+    calibration: inference.Calibration = app.state.calibration
     return {
-        "success": True,
-        "disease_id": disease["id"],
-        "thai_name": disease["thai_name"],
-        "scientific_name": disease["scientific_name"],
-        "category": disease["category"],
-        "severity": disease["severity"],
-        "severity_level": disease["severity_level"],
-        "confidence_percentage": round(confidence * 100, 1),
-        "symptoms": disease["symptoms"],
-        "chemical_control": disease["chemical_control"],
-        "organic_control": disease["organic_control"],
-        "prevention": disease["prevention"],
-        "urgent_action": disease["urgent_action"],
-        "farm_id": payload.farmId,
-        "analysis_engine": "Watermelon-Vision-FastAPI-v1.0"
+        "status": "ok",
+        "service": "watermelon-vision",
+        "runtime": f"onnxruntime {ort.__version__}",
+        "model_loaded": app.state.session is not None,
+        "model_version": app.state.model_version,
+        "architecture": app.state.architecture,
+        "device": "cpu",
+        "classes": CLASSES,
+        "engine_version": inference.ENGINE_VERSION,
+        "modes": list(inference.MODES),
+        "default_mode": DEFAULT_MODE,
+        # Reported so a caller can tell whether `confidence` is a probability
+        # or a raw softmax score, which changes how it should be worded.
+        "calibration": calibration.to_dict(),
+        "aggregation": {
+            "tile_suspicion_threshold": inference.TILE_SUSPICION,
+            "tile_min_tissue_fraction": inference.TILE_MIN_TISSUE,
+            "rule": "crop-may-escalate-healthy-never-downgrade-disease",
+        },
     }
 
-@app.post("/api/v1/ai/detect-disease-file")
-async def detect_disease_file(file: UploadFile = File(...)):
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="กรุณาอัปโหลดไฟล์รูปภาพเท่านั้น")
 
-    contents = await file.read()
-    image = Image.open(io.BytesIO(contents)).convert("RGB")
-    width, height = image.size
+@app.get("/metrics")
+def metrics():
+    """Held-out test results, so callers can show real accuracy rather than a claim."""
+    if not METRICS_PATH.exists():
+        raise HTTPException(status_code=404, detail="ไม่พบ metrics.json ของรุ่นที่ฝึกไว้")
+    return json.loads(METRICS_PATH.read_text(encoding="utf-8"))
 
-    keys = ["downy_mildew", "anthracnose", "gummy_stem_blight", "healthy"]
-    chosen_key = random.choices(keys, weights=[40, 30, 20, 10], k=1)[0]
-    disease = DISEASE_CATALOG[chosen_key]
-    confidence = round(random.uniform(0.92, 0.98), 3)
 
+def _predict(image: Image.Image, mode: Mode) -> dict:
+    return inference.run(
+        app.state.session,
+        app.state.input_name,
+        app.state.output_name,
+        image,
+        mode=mode,
+        calibration=app.state.calibration,
+        model_version=app.state.model_version,
+    )
+
+
+@app.post("/predict")
+async def predict_file(
+    file: UploadFile = File(...),
+    mode: str | None = Query(default=None, description="fast | balanced | deep"),
+):
+    resolved = _resolve_mode(mode)
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=415, detail="รองรับเฉพาะไฟล์ JPEG, PNG และ WebP")
+    data = await file.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="ไฟล์ภาพใหญ่เกิน 10 MB")
+    return _predict(_decode_image(data), resolved)
+
+
+@app.post("/predict-base64")
+async def predict_base64(payload: Base64PredictRequest):
+    resolved = _resolve_mode(payload.mode)
+    raw = payload.imageBase64
+    # Browsers hand over a data URL; keep only the payload after the comma.
+    if raw.startswith("data:"):
+        _, _, raw = raw.partition(",")
+    try:
+        data = base64.b64decode(raw, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"ถอดรหัส base64 ไม่สำเร็จ: {exc}") from exc
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="ไฟล์ภาพใหญ่เกิน 10 MB")
+    return _predict(_decode_image(data), resolved)
+
+
+@app.post("/predict-raw")
+async def predict_raw(file: UploadFile = File(...)):
+    """Single centre view, no crops, no TTA, no quality gate.
+
+    Here so the effect of the engine can be measured against the plain
+    checkpoint on the same image — ``fit_calibration.py`` uses it to report
+    both numbers side by side. Not for the app: it is the v2 behaviour, which
+    called 19 of 50 diseased leaves healthy.
+    """
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=415, detail="รองรับเฉพาะไฟล์ JPEG, PNG และ WebP")
+    data = await file.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="ไฟล์ภาพใหญ่เกิน 10 MB")
+    image = _decode_image(data)
+    logits = app.state.session.run(
+        [app.state.output_name], {app.state.input_name: preprocess(image)}
+    )[0]
+    scores = softmax(logits)[0].tolist()
+    winner = int(np.argmax(scores))
     return {
-        "success": True,
-        "filename": file.filename,
-        "image_dimension": f"{width}x{height}",
-        "disease_id": disease["id"],
-        "thai_name": disease["thai_name"],
-        "scientific_name": disease["scientific_name"],
-        "severity": disease["severity"],
-        "severity_level": disease["severity_level"],
-        "confidence_percentage": round(confidence * 100, 1),
-        "symptoms": disease["symptoms"],
-        "chemical_control": disease["chemical_control"],
-        "organic_control": disease["organic_control"],
-        "prevention": disease["prevention"],
-        "urgent_action": disease["urgent_action"]
+        "class_id": CLASSES[winner],
+        "confidence": round(scores[winner], 6),
+        "scores": {name: round(score, 6) for name, score in zip(CLASSES, scores)},
+        "model_version": app.state.model_version,
+        "engine_version": "raw",
+        "note": "คะแนน softmax ดิบจากภาพเดียวมุมเดียว ไม่ผ่านเครื่องยนต์รวมผล ใช้เพื่อเปรียบเทียบเท่านั้น",
     }

@@ -1,0 +1,16 @@
+{
+  "classes": [
+    "Anthracnose",
+    "Downy_Mildew",
+    "Healthy",
+    "Mosaic_Virus"
+  ],
+  "architecture": "efficientnet_b0",
+  "image_size": 224,
+  "opset": 17,
+  "trained_epoch": 11,
+  "source_checkpoint": "model.pt",
+  "source_sha256": "47cc866dfd3c8e7ecedca594b953ab642e6e0d8ed4933a23966bd882b5094d55",
+  "onnx_sha256": "ab47ff1c131cc3a9e9b979709923b046dcd90920f273fedd0a4fc2bb1580ffd3",
+  "max_abs_diff_vs_torch": 1.3470649719238281e-05
+}

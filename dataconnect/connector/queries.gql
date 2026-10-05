@@ -1,0 +1,76 @@
+# Watermelon AI Data Connect Queries
+
+query GetMyProfile @auth(level: USER) {
+  user(key: { uid_expr: "auth.uid" }) {
+    uid
+    email
+    displayName
+    phoneNumber
+    province
+    createdAt
+  }
+}
+
+query ListMyPlots @auth(level: USER) {
+  plots(
+    where: { owner: { uid: { eq_expr: "auth.uid" } } },
+    orderBy: [{ createdAt: DESC }]
+  ) {
+    id
+    name
+    cultivar
+    areaRai
+    plantDate
+    harvestDateTarget
+    soilType
+    status
+    createdAt
+    updatedAt
+  }
+}
+
+query ListMyDiseaseRecords @auth(level: USER) {
+  diseaseRecords(
+    where: { owner: { uid: { eq_expr: "auth.uid" } } },
+    orderBy: [{ createdAt: DESC }]
+  ) {
+    id
+    diseaseName
+    diseaseNameTh
+    confidence
+    severity
+    imageUrl
+    recommendation
+    createdAt
+  }
+}
+
+query ListMyChatSessions @auth(level: USER) {
+  chatSessions(
+    where: { owner: { uid: { eq_expr: "auth.uid" } } },
+    orderBy: [{ updatedAt: DESC }]
+  ) {
+    id
+    title
+    createdAt
+    updatedAt
+  }
+}
+
+query GetChatMessages($sessionId: UUID!) @auth(level: USER) {
+  chatMessages(
+    where: {
+      session: {
+        id: { eq: $sessionId },
+        owner: { uid: { eq_expr: "auth.uid" } }
+      }
+    },
+    orderBy: [{ createdAt: ASC }]
+  ) {
+    id
+    sender
+    content
+    mediaUrl
+    createdAt
+  }
+}

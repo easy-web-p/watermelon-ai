@@ -1,0 +1,55 @@
+# Watermelon AI Data Connect Schema
+# Models: Users, Plots, DiseaseRecords, ChatSessions, ChatMessages
+
+type User @table(key: "uid") {
+  uid: String! @default(expr: "auth.uid")
+  email: String! @unique
+  displayName: String
+  phoneNumber: String
+  province: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type Plot @table {
+  id: UUID! @default(expr: "uuidV4()")
+  owner: User!
+  name: String!
+  cultivar: String!
+  areaRai: Float!
+  plantDate: Date
+  harvestDateTarget: Date
+  soilType: String
+  status: String! @default(value: "active")
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type DiseaseRecord @table {
+  id: UUID! @default(expr: "uuidV4()")
+  owner: User!
+  plot: Plot
+  diseaseName: String!
+  diseaseNameTh: String!
+  confidence: Float!
+  severity: String
+  imageUrl: String
+  recommendation: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type ChatSession @table {
+  id: UUID! @default(expr: "uuidV4()")
+  owner: User!
+  title: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type ChatMessage @table {
+  id: UUID! @default(expr: "uuidV4()")
+  session: ChatSession!
+  sender: String!
+  content: String!
+  mediaUrl: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}

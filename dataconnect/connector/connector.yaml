@@ -1,0 +1,4 @@
+connectorId: "watermelon-connector"
+generate:
+  javascriptSdk:
+    outputDir: "../../src/lib/dataconnect"
