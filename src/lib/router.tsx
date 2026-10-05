@@ -8,9 +8,25 @@ import type { AnchorHTMLAttributes, ReactNode } from 'react';
  */
 
 function currentPath(): string {
-  const raw = window.location.hash.replace(/^#/, '');
-  const path = raw.split('?')[0] || '/';
-  return path.startsWith('/') ? path : `/${path}`;
+  if (typeof window === 'undefined') return '/';
+  if (window.location.hash) {
+    const raw = window.location.hash.replace(/^#/, '');
+    const path = raw.split('?')[0] || '/';
+    return path.startsWith('/') ? path : `/${path}`;
+  }
+  const pathname = window.location.pathname;
+  if (pathname && pathname !== '/' && pathname !== '/blank') {
+    return pathname.startsWith('/') ? pathname : `/${pathname}`;
+  }
+  return '/';
+}
+
+function currentSearch(): string {
+  if (typeof window === 'undefined') return '';
+  if (window.location.hash.includes('?')) {
+    return window.location.hash.split('?')[1] ?? '';
+  }
+  return window.location.search.replace(/^\?/, '');
 }
 
 type RouterValue = {
@@ -23,15 +39,19 @@ const RouterContext = createContext<RouterValue | null>(null);
 
 export function RouterProvider({ children }: { children: ReactNode }) {
   const [path, setPath] = useState(currentPath);
-  const [search, setSearch] = useState(() => window.location.hash.split('?')[1] ?? '');
+  const [search, setSearch] = useState(currentSearch);
 
   useEffect(() => {
     const sync = () => {
       setPath(currentPath());
-      setSearch(window.location.hash.split('?')[1] ?? '');
+      setSearch(currentSearch());
     };
     window.addEventListener('hashchange', sync);
-    return () => window.removeEventListener('hashchange', sync);
+    window.addEventListener('popstate', sync);
+    return () => {
+      window.removeEventListener('hashchange', sync);
+      window.removeEventListener('popstate', sync);
+    };
   }, []);
 
   const navigate = useCallback((to: string, options?: { replace?: boolean }) => {

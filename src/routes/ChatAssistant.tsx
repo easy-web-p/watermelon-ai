@@ -257,7 +257,7 @@ export function ChatAssistant() {
 
   const toast = useToast();
   const recorder = useKnockRecorder();
-  const { query } = useRouter();
+  const { query, path } = useRouter();
   const { initial } = useDisplayUser();
   const allowTraining = useAuth((state) => state.consent.improveModel);
   const [acousticOnline, setAcousticOnline] = useState<boolean | null>(null);
@@ -266,7 +266,8 @@ export function ChatAssistant() {
     api.acousticModelStatus().then((st) => setAcousticOnline(st.online)).catch(() => setAcousticOnline(false));
   }, []);
 
-  const thread = query.get('thread');
+  const threadMatch = path.match(/^\/chat\/([^/?#]+)/);
+  const thread = query.get('thread') || (threadMatch ? decodeURIComponent(threadMatch[1]) : null);
   const [restoring, setRestoring] = useState(true);
 
   useEffect(() => {

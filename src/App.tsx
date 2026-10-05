@@ -43,6 +43,7 @@ const AccountRecovery = lazy(() =>
 );
 const Recipes = lazy(() => import('./routes/Recipes').then((m) => ({ default: m.Recipes })));
 const ApiDocs = lazy(() => import('./routes/ApiDocs').then((m) => ({ default: m.ApiDocs })));
+const DiseaseScan = lazy(() => import('./routes/DiseaseScan').then((m) => ({ default: m.DiseaseScan })));
 
 /** Static routes. The dynamic `/status/:code` is matched separately. */
 const ROUTES: Record<string, ComponentType> = {
@@ -55,6 +56,7 @@ const ROUTES: Record<string, ComponentType> = {
   '/recipes': Recipes,
   '/plots': FarmPlots,
   '/diseases': SupportedDiseases,
+  '/disease-scan': DiseaseScan,
   '/pricing': Pricing,
   '/checkout': Checkout,
   '/payment-success': PaymentSuccess,
@@ -75,6 +77,7 @@ const ROUTES: Record<string, ComponentType> = {
   '/otp': Otp,
   '/recover': AccountRecovery,
   '/gmail-recover': AccountRecovery,
+  '/email-recover': AccountRecovery,
 };
 
 function RouteFallback() {
@@ -92,6 +95,8 @@ function Screen() {
 
   const statusMatch = path.match(/^\/status\/(\d{3})$/);
   if (statusMatch) return <StatusPage code={statusMatch[1]} />;
+
+  if (path === '/chat' || path.startsWith('/chat/')) return <ChatAssistant />;
 
   const Route = ROUTES[path];
   if (Route) return <Route />;

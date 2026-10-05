@@ -7,9 +7,22 @@ createRoot(document.getElementById('root')!).render(<App />);
 if ('serviceWorker' in navigator) {
   if (import.meta.env.PROD) {
     window.addEventListener('load', () => {
-      void navigator.serviceWorker.register('/sw.js').catch((error) => {
-        console.warn('Service worker registration failed', error);
-      });
+      void navigator.serviceWorker
+        .register('/sw.js')
+        .then((registration) => {
+          void registration.update();
+        })
+        .catch((error) => {
+          console.warn('Service worker registration failed', error);
+        });
+    });
+
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
     });
   } else {
     // In dev mode, unregister any active service worker and clear caches so stale
