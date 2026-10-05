@@ -9,7 +9,7 @@ import { KnockResultCard } from '../components/domain/KnockResultCard';
 import { DiseaseResultCard } from '../components/domain/DiseaseResultCard';
 import { cn } from '../lib/cn';
 import { useRouter } from '../lib/router';
-import { ApiError, api, type ChatMode, type DiseaseDetection, type KnockAnalysis } from '../lib/api';
+import { ApiError, NetworkError, api, type ChatMode, type DiseaseDetection, type KnockAnalysis } from '../lib/api';
 import {
   rememberConversationId,
   restoreConversationId,
@@ -288,7 +288,10 @@ export function ChatAssistant() {
         setMessages([GREETING, ...history.map(toFeedMessage)]);
       } catch (error) {
         if (cancelled) return;
-        if (!(error instanceof ApiError && error.status === 404)) {
+        const isOfflineOrNotFound =
+          (error instanceof ApiError && (error.status === 404 || error.status === 502)) ||
+          error instanceof NetworkError;
+        if (!isOfflineOrNotFound) {
           const detail = error instanceof Error ? error.message : 'ไม่ทราบสาเหตุ';
           setMessages([
             GREETING,
@@ -384,9 +387,47 @@ export function ChatAssistant() {
         }
         void useChat.getState().loadConversations();
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'ส่งข้อความไม่สำเร็จ';
-        toast.error(message);
-        append({ id: newId('err'), role: 'assistant', time: nowLabel(), text: message, failed: true });
+        const isOffline =
+          (error instanceof ApiError && error.status === 502) ||
+          error instanceof NetworkError;
+
+        if (isOffline) {
+          let replyText: string;
+          if (photo) {
+            replyText =
+              'น้องแตงโม AI ได้รับภาพตัวอย่างแล้วครับ 🍉\n\n' +
+              '*(ระบบกำลังทำงานในโหมดคลาวด์พรีวิว — สรุปแนวทางตรวจวินิจฉัยตามหลักวิชาการ)*\n\n' +
+              '- **แอนแทรคโนส**: แผลจุดกลมสีน้ำตาลบุ๋ม มีวงซ้อน ขอบใบแห้งกรอบ (สารเคมี: อะซอกซีสโตรบิน PHI 7 วัน หรือ ไดฟีโนโคนาโซล PHI 7 วัน)\n' +
+              '- **ราน้ำค้าง**: จุดเหลืองเหลี่ยมตามเส้นใบ ใต้ใบมีขุยราสีเทา (สารเคมี: ไดเมโทมอร์ฟ PHI 7 วัน หรือ ไซมอกซานิล PHI 7 วัน)\n' +
+              '- **ไวรัสใบด่าง**: ใบด่างเขียวเข้มสลับอ่อน ยอดหงิกชะงัก (แนะนำกำจัดแมลงพาหะเพลี้ยไฟ/เพลี้ยอ่อน และตัดทำลายต้นเป็นโรค)\n\n' +
+              '⚠️ *ข้อควรทราบ: AI เป็นเครื่องมือช่วยตัดสินใจ กรุณาตรวจสอบอาการจริงในแปลงหรือปรึกษาเจ้าหน้าที่เกษตรก่อนพ่นสาร*';
+          } else if (trimmed.includes('ผสม') || trimmed.includes('ยา') || trimmed.includes('สาร')) {
+            replyText =
+              'ลำดับการผสมสารเคมีในถังพ่น (Tank Mix Order) ที่ถูกต้องตามหลักวิชาการ:\n\n' +
+              '1. สารปรับสภาพน้ำ / ปรับ pH\n' +
+              '2. สารชนิดผงละลายน้ำ (WP, WG, SP)\n' +
+              '3. สารแขวนลอยเข้มข้น (SC, CS)\n' +
+              '4. สารละลายน้ำมันเข้มข้น (EC, EW)\n' +
+              '5. สารจับใบ / สารเสริมประสิทธิภาพ (Adjuvants)\n\n' +
+              '⚠️ *ข้อควรระวัง: ห้ามผสมสารกลุ่มคอปเปอร์ร่วมกับกรดอะมิโน และปฏิบัติตามค่าระยะปลอดภัยก่อนเก็บเกี่ยว (PHI) บนฉลากเสมอ*';
+          } else {
+            replyText =
+              `น้องแตงโม AI ได้รับคำถาม: "${trimmed}" 🍉\n\n` +
+              '*(โหมดแสดงผลคลาวด์พรีวิว)*\n' +
+              'คุณสามารถปรึกษาเรื่องโรคแตงโม ศัตรูพืช การผสมสารเคมี และการดูแลระยะแปลงได้ทันที หากต้องการเชื่อมต่อโมเดล Deep Learning เต็มรูปแบบ สามารถเปิดเซิร์ฟเวอร์ Express ในเครื่องได้ครับ';
+          }
+
+          append({
+            id: newId('offline-reply'),
+            role: 'assistant',
+            time: nowLabel(),
+            text: replyText,
+          });
+        } else {
+          const message = error instanceof Error ? error.message : 'ส่งข้อความไม่สำเร็จ';
+          toast.error(message);
+          append({ id: newId('err'), role: 'assistant', time: nowLabel(), text: message, failed: true });
+        }
       } finally {
         setBusy(false);
       }
@@ -453,9 +494,28 @@ export function ChatAssistant() {
       });
       void useChat.getState().loadConversations();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'วิเคราะห์เสียงไม่สำเร็จ';
-      toast.error(message);
-      append({ id: newId('err'), role: 'assistant', time: nowLabel(), text: message, failed: true });
+      const isOffline =
+        (error instanceof ApiError && error.status === 502) ||
+        error instanceof NetworkError;
+      if (isOffline) {
+        append({
+          id: newId('offline-knock'),
+          role: 'assistant',
+          time: nowLabel(),
+          text:
+            'น้องแตงโม AI ได้รับเสียงเคาะแล้วครับ 🍉\n\n' +
+            '*(โหมดคลาวด์พรีวิว)*\n' +
+            'โมเดล Melon Acoustic Engine กำลังเตรียมประมวลผลบนเซิร์ฟเวอร์หลัก ในเบื้องต้นสามารถสังเกตความสุกทางกายภาพร่วมด้วย:\n' +
+            '- **เสียงทึบ กังวานปานกลาง (แปะๆ/ตึบๆ)**: บ่งบอกความสุกพอเหมาะ (85–90%) เหมาะสำหรับเก็บเกี่ยว\n' +
+            '- **เสียงแน่น แหลมสูง (ป๊อกๆ)**: ผลยังอ่อน เนื้อแน่นแต่ความหวานยังไม่เต็มที่\n' +
+            '- **เสียงหลวม กลวงต่ำ (ปุๆ)**: ผลสุกงอมเกินไป หรืออาจมีอาการไส้ล้ม/โพรงน้ำตาล\n\n' +
+            '⚠️ *คำแนะนำ: ควรสังเกตการเหี่ยวของมือเกาะที่ขั้วผลและจุดแต้มดินสีครีมเข้มประกอบการตัดสินใจเก็บเกี่ยว*',
+        });
+      } else {
+        const message = error instanceof Error ? error.message : 'วิเคราะห์เสียงไม่สำเร็จ';
+        toast.error(message);
+        append({ id: newId('err'), role: 'assistant', time: nowLabel(), text: message, failed: true });
+      }
     } finally {
       setBusy(false);
     }

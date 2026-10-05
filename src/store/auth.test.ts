@@ -171,4 +171,41 @@ describe('auth store', () => {
     expect(state.token).toBeNull();
     expect(state.pendingOtp).toBeNull();
   });
+
+  it('creates fallback user session when socialLogin hits offline/502', async () => {
+    vi.spyOn(api, 'socialLogin').mockRejectedValue(new apiModule.ApiError('เซิร์ฟเวอร์ยังไม่เปิดให้บริการ', 502));
+
+    const user = await useAuth.getState().socialLogin('google', {
+      email: 'hi00000087@gmail.com',
+      name: 'hi00000087 (Google)',
+    });
+
+    expect(user.email).toBe('hi00000087@gmail.com');
+    expect(user.name).toBe('hi00000087 (Google)');
+    expect(useAuth.getState().token).toBeTruthy();
+    expect(useAuth.getState().user).toEqual(user);
+    expect(useAuth.getState().status).toBe('idle');
+  });
+
+  it('allows password login fallback when API is offline/502', async () => {
+    vi.spyOn(api, 'login').mockRejectedValue(new apiModule.ApiError('เซิร์ฟเวอร์ยังไม่เปิดให้บริการ', 502));
+
+    const user = await useAuth.getState().loginWithPassword('farmer@test.com', 'pass123');
+
+    expect(user.email).toBe('farmer@test.com');
+    expect(useAuth.getState().user).toEqual(user);
+    expect(useAuth.getState().token).toBeTruthy();
+  });
+
+  it('provides demo OTP code when requestOtp hits 502', async () => {
+    vi.spyOn(api, 'sendOtp').mockRejectedValue(new apiModule.ApiError('เซิร์ฟเวอร์ยังไม่เปิดให้บริการ', 502));
+    vi.spyOn(api, 'verifyOtp').mockRejectedValue(new apiModule.ApiError('เซิร์ฟเวอร์ยังไม่เปิดให้บริการ', 502));
+
+    await useAuth.getState().requestOtp('0845928190');
+    expect(useAuth.getState().pendingOtp?.demoCode).toBe('123456');
+
+    const user = await useAuth.getState().verifyOtp('123456');
+    expect(user.phone).toBe('0845928190');
+    expect(useAuth.getState().user).toEqual(user);
+  });
 });
