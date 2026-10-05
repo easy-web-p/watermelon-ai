@@ -142,7 +142,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             ประวัติการสนทนาล่าสุด
           </SectionLabel>
           <div className="flex flex-col gap-0.5">
-            {(!conversations || conversations.length === 0) && listError ? (
+            {(!conversations || conversations.length === 0) &&
+            listError &&
+            !listError.includes('ยังไม่เปิดให้บริการ') ? (
               <p className="px-3 py-2 text-caption text-error">
                 <Icon name="error" size={13} className="mr-1 inline align-text-bottom" />
                 โหลดประวัติไม่สำเร็จ — {listError} กดปุ่มรีเฟรชด้านบนเพื่อลองใหม่

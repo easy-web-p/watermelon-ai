@@ -8,7 +8,7 @@ import { Meter } from '../components/ui/Meter';
 import { StatTile } from '../components/ui/StatTile';
 import { Link, useRouter } from '../lib/router';
 import { cn } from '../lib/cn';
-import { api, type DiseaseRecord } from '../lib/api';
+import { api, ApiError, NetworkError, type DiseaseRecord } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
 import { AddPlotModal, type NewPlot } from '../components/domain/AddPlotModal';
 
@@ -158,8 +158,14 @@ export function FarmPlots() {
       .then((result) => {
         if (!cancelled) setHistory(Array.isArray(result?.records) ? result.records : []);
       })
-      .catch(() => {
-        if (!cancelled) setHistoryError(true);
+      .catch((err) => {
+        if (!cancelled) {
+          if ((err instanceof ApiError && err.status === 502) || err instanceof NetworkError) {
+            setHistory([]);
+          } else {
+            setHistoryError(true);
+          }
+        }
       });
     return () => {
       cancelled = true;

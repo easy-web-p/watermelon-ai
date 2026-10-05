@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api, type ApiConversation } from '../lib/api';
+import { api, ApiError, NetworkError, type ApiConversation } from '../lib/api';
 import { rememberConversationId, restoreConversationId } from '../lib/chatHistory';
 
 /**
@@ -36,6 +36,18 @@ export const useChat = create<ChatStore>((set, get) => ({
       const list = await api.listConversations();
       set({ conversations: Array.isArray(list) ? list : [], loading: false, error: null });
     } catch (err) {
+      const isOfflineOrPreview =
+        (err instanceof ApiError && err.status === 502) ||
+        err instanceof NetworkError;
+
+      if (isOfflineOrPreview) {
+        set({
+          loading: false,
+          error: null,
+        });
+        return;
+      }
+
       set({
         loading: false,
         error: err instanceof Error ? err.message : 'โหลดรายการสนทนาไม่สำเร็จ',
@@ -63,8 +75,13 @@ export const useChat = create<ChatStore>((set, get) => ({
     try {
       await api.deleteConversation(id);
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'ลบการสนทนาไม่สำเร็จ' });
-      throw err;
+      const isOfflineOrPreview =
+        (err instanceof ApiError && err.status === 502) ||
+        err instanceof NetworkError;
+      if (!isOfflineOrPreview) {
+        set({ error: err instanceof Error ? err.message : 'ลบการสนทนาไม่สำเร็จ' });
+        throw err;
+      }
     }
     const remaining = get().conversations.filter((c) => c.id !== id);
     const currentActive = get().activeId;
