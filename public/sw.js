@@ -7,7 +7,7 @@
  * than an honest error, so API calls fail loudly instead of returning a 200.
  */
 
-const VERSION = 'v2.1.0';
+const VERSION = 'v2.2.0';
 const SHELL_CACHE = `watermelon-shell-${VERSION}`;
 const ASSET_CACHE = `watermelon-assets-${VERSION}`;
 
