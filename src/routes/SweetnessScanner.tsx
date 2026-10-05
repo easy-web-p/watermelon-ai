@@ -247,7 +247,16 @@ export function SweetnessScanner() {
                 <Icon name="refresh" size={18} />
                 ตรวจวัดใหม่
               </Button>
-            ) : undefined
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => (window.location.hash = '#/disease-scan')}
+              >
+                <Icon name="biotech" size={18} />
+                ตรวจโรคใบด้วย AI เต็มระบบ
+              </Button>
+            )
           }
         />
 

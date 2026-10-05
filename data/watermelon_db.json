@@ -1,6 +1,48 @@
 {
   "diseaseRecords": [
     {
+      "id": "dis-1791222212132-2895b6f0",
+      "detectedAt": "2026-10-05T17:43:32.132Z",
+      "farmId": "guest-anonymous",
+      "notes": "ช่วยตรวจโรคใบนี้ให้หน่อยครับ",
+      "status": "healthy",
+      "disease_id": null,
+      "thai_name": "ไม่พบอาการโรคในภาพนี้",
+      "confidence_percentage": 90.4,
+      "severity": "ไม่พบอาการ",
+      "severity_level": 0,
+      "urgent_action": "ไม่ต้องพ่นสารจากผลนี้ ให้สำรวจใบล่างและใต้ใบทุก 3–5 วันตามรอบปกติ",
+      "phi_days": null,
+      "model_version": "efficientnet_b0@ab47ff1c131c",
+      "engine": null,
+      "escalated_from_healthy": false,
+      "evidence_region": null,
+      "lesion_area_percentage": null,
+      "photo_quality": null,
+      "confidence_calibrated": false
+    },
+    {
+      "id": "dis-1791222155912-25fa7e87",
+      "detectedAt": "2026-10-05T17:42:35.916Z",
+      "farmId": "guest-anonymous",
+      "notes": "test scan",
+      "status": "healthy",
+      "disease_id": null,
+      "thai_name": "ไม่พบอาการโรคในภาพนี้",
+      "confidence_percentage": 90.4,
+      "severity": "ไม่พบอาการ",
+      "severity_level": 0,
+      "urgent_action": "ไม่ต้องพ่นสารจากผลนี้ ให้สำรวจใบล่างและใต้ใบทุก 3–5 วันตามรอบปกติ",
+      "phi_days": null,
+      "model_version": "efficientnet_b0@ab47ff1c131c",
+      "engine": null,
+      "escalated_from_healthy": false,
+      "evidence_region": null,
+      "lesion_area_percentage": null,
+      "photo_quality": null,
+      "confidence_calibrated": false
+    },
+    {
       "id": "dis-1791206371524-rf4efd1",
       "detectedAt": "2026-10-05T13:19:31.524Z",
       "farmId": "guest-anonymous",
@@ -504,19 +546,40 @@
       "storedName": "1791206106478-chat-leaf.jpg",
       "size": 26807,
       "ownerId": "guest-anonymous"
+    },
+    "att-1791222212131-2762a1fd": {
+      "id": "att-1791222212131-2762a1fd",
+      "type": "image",
+      "name": "1791222212125-chat-leaf.jpg",
+      "mimeType": "image/jpeg",
+      "url": "/api/v1/storage/files/747ecdd13fc38f036c4e18a0c999b75cc5f8cea87e48f29c8a3230412852eb79/1791827012/1791222212125-chat-leaf.jpg",
+      "storedName": "1791222212125-chat-leaf.jpg",
+      "size": 1420223,
+      "ownerId": "guest-anonymous"
     }
   },
   "conversations": [
     {
+      "id": "test-conv-1791222211894",
+      "userId": "guest-anonymous",
+      "title": "ตรวจโรค: ไม่พบอาการโรคในภาพนี้ 🍉",
+      "lastMessage": "ไม่พบอาการโรคในภาพนี้",
+      "createdAt": "2026-10-05T17:43:32.025Z",
+      "updatedAt": "2026-10-05T17:43:32.132Z",
+      "isPinned": false,
+      "chatMode": "disease-diagnosis",
+      "messageCount": 2
+    },
+    {
       "id": "torpedo-vs-kinnaree",
       "userId": "guest-anonymous",
-      "title": "ตรวจโรค: ยังสรุปไม่ได้จากภาพนี้ 🍉",
+      "title": "ขอคำปรึกษาเรื่องโรคใบจุด 🍉",
       "lastMessage": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:...",
-      "createdAt": "2026-10-05T13:09:56.303Z",
-      "updatedAt": "2026-10-05T14:05:52.117Z",
+      "createdAt": "2026-10-05T14:50:26.075Z",
+      "updatedAt": "2026-10-05T17:55:11.059Z",
       "isPinned": false,
       "chatMode": "general",
-      "messageCount": 30
+      "messageCount": 10
     },
     {
       "id": "conv-1791202895052-s7idc2",
@@ -747,131 +810,133 @@
     ],
     "torpedo-vs-kinnaree": [
       {
-        "id": "msg-1791205796304-670ba2a",
+        "id": "msg-1791211826075-1t38ef94",
         "conversationId": "torpedo-vs-kinnaree",
         "role": "user",
-        "content": "วิธีแก้เพลี้ยไฟและไรแดงระบาด",
+        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
         "attachments": [],
-        "createdAt": "2026-10-05T13:09:56.303Z",
+        "createdAt": "2026-10-05T14:50:26.075Z",
         "status": "completed"
       },
       {
-        "id": "msg-1791205796671-771f0ba",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "assistant",
-        "content": "🐛 **การจัดการแมลงศัตรูแตงโม — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **เพลี้ยไฟ (ยอดหงิก ใบม้วนงอขึ้น):**\n  - ใช้ **สไปนีโทแรม (Spinetoram 12% SC)** อัตรา 10-15 ซีซี/น้ำ 20 ลิตร หรือ ไดโนทีฟูแรน\n  - พ่นช่วงเช้าหรือเย็นเน้นบริเวณยอดและใต้ใบ (PHI 7 วัน)\n- **ไรแดงแตงโม (ใบมีจุดประสีบรอนซ์ขาว):**\n  - ใช้ **โพรพาร์ไกต์ (Propargite)** หรือ เฮกซีไทอะซ็อกซ์ (Hexythiazox) สลับกลุ่มสาร\n- **แมลงวันผลไม้ / แมลงวันแตง (หนอนเจาะผล):**\n  - ติดตั้งกับดักกาวเหนียวและฟีโรโมนเมธิลยูจีนอลรอบแปลง\n  - ฉีดพ่นโปรตีนเหยื่อพิษห่างจากแนวแปลง 5-10 เมตรครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:09:56.671Z",
-        "status": "completed",
-        "modelVersion": "watermelon-expert-rules"
-      },
-      {
-        "id": "msg-1791205804714-9cdcbc8",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "user",
-        "content": "ใบไหม้จุดดำเกิดจากอะไร?",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:10:04.714Z",
-        "status": "completed"
-      },
-      {
-        "id": "msg-1791205804872-a809918",
+        "id": "msg-1791211826281-1u9014f4",
         "conversationId": "torpedo-vs-kinnaree",
         "role": "assistant",
         "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
         "attachments": [],
-        "createdAt": "2026-10-05T13:10:04.872Z",
+        "createdAt": "2026-10-05T14:50:26.281Z",
         "status": "completed",
         "modelVersion": "watermelon-expert-rules"
       },
       {
-        "id": "msg-1791205814767-ca298d1",
+        "id": "msg-1791212425043-1w967593",
         "conversationId": "torpedo-vs-kinnaree",
         "role": "user",
-        "content": "ยอดหงิกเหลือง ไวรัสหรือขาดสารอาหาร?",
+        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
         "attachments": [],
-        "createdAt": "2026-10-05T13:10:14.767Z",
+        "createdAt": "2026-10-05T15:00:25.043Z",
         "status": "completed"
       },
       {
-        "id": "msg-1791205814966-da25258",
+        "id": "msg-1791212425223-1xc3246e",
         "conversationId": "torpedo-vs-kinnaree",
         "role": "assistant",
-        "content": "🌿 **โรคไวรัสใบด่างแตงโม (Watermelon Mosaic Virus - WMV) & อาการยอดหงิก** 🍉\n\n- **สาเหตุ:** เชื้อไวรัส มีแมลงพาหะสำคัญคือ **เพลี้ยไฟ** และ **เพลี้ยอ่อน**\n- **อาการสังเกต:** ใบมีแถบสีเขียวเข้มสลับเขียวอ่อน ผิวใบตะปุ่มตะป่ำ ยอดหงิกงอชะงักการเจริญเติบโต ผลบิดเบี้ยว\n- **แนวทางจัดการ:**\n  1. โรคไวรัสไม่มียารักษาโดยตรง **ต้องถอนต้นที่เป็นโรคใส่ถุงดำนำไปทำลายนอกแปลงทันที** เพื่อไม่ให้เป็นแหล่งแพร่ระบาด\n  2. **คุมแมลงพาหะ:** พ่นสารกำจัดเพลี้ยไฟ เช่น **สไปนีโทแรม (Spinetoram)** หรือ **ไดโนทีฟูแรน (Dinotefuran)** (PHI 7 วัน)\n  3. ฉีดพ่นเชื้อราบิวเวอเรีย หรือใช้น้ำมันปิโตรเลียมสเปรย์ออยล์คุมไข่แมลง",
+        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
         "attachments": [],
-        "createdAt": "2026-10-05T13:10:14.967Z",
+        "createdAt": "2026-10-05T15:00:25.223Z",
         "status": "completed",
         "modelVersion": "watermelon-expert-rules"
       },
       {
-        "id": "msg-1791205835020-fa9d78f",
+        "id": "msg-1791212804056-1z28e53b",
         "conversationId": "torpedo-vs-kinnaree",
         "role": "user",
-        "content": "4455",
+        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
         "attachments": [],
-        "createdAt": "2026-10-05T13:10:35.020Z",
+        "createdAt": "2026-10-05T15:06:44.056Z",
         "status": "completed"
       },
       {
-        "id": "msg-1791205835181-g5c1ca8",
+        "id": "msg-1791212804225-20f3a80d",
         "conversationId": "torpedo-vs-kinnaree",
         "role": "assistant",
-        "content": "สวัสดีครับ! น้องแตงโม AI ยินดีช่วยเหลือเกษตรกรและผู้บริโภคทุกท่านครับ 🍉\n\nผมสามารถช่วยคุณได้หลากหลายเรื่อง เช่น:\n1. 📸 **วิเคราะห์โรคพืช:** ถ่ายรูปใบแตงโมส่งเข้ามา เพื่อตรวจโรคราน้ำค้าง แอนแทรคโนส หรือไวรัสใบด่าง พร้อมคำแนะนำยาและค่า PHI\n2. 🎙️ **วัดความสุกจากเสียงเคาะ:** อัดเสียงเคาะผลแตงโมเพื่อประเมินความสุกและความหวาน Brix\n3. 🌱 **เทคนิคการปลูกและสูตรปุ๋ย:** สอบถามสูตรปุ๋ยตามระยะ การจัดการน้ำ หรือการเลือกสายพันธุ์ (กินรี, ตอร์ปิโด, ซอนญ่า)\n4. 📈 **เช็กราคาตลาด:** ตรวจสอบราคากลางผลผลิตแตงโม\n\nต้องการให้น้องแตงโม AI ช่วยเหลือเรื่องใดเป็นพิเศษ พิมพ์ถามหรือส่งรูปภาพมาได้เลยครับ!",
+        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
         "attachments": [],
-        "createdAt": "2026-10-05T13:10:35.181Z",
+        "createdAt": "2026-10-05T15:06:44.225Z",
         "status": "completed",
         "modelVersion": "watermelon-expert-rules"
       },
       {
-        "id": "msg-1791206018405-ie5cdd2",
+        "id": "msg-1791213756082-2296c14b",
         "conversationId": "torpedo-vs-kinnaree",
         "role": "user",
-        "content": "ราคาตลาด",
+        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
         "attachments": [],
-        "createdAt": "2026-10-05T13:13:38.405Z",
+        "createdAt": "2026-10-05T15:22:36.082Z",
         "status": "completed"
       },
       {
-        "id": "msg-1791206018585-j3eb550",
+        "id": "msg-1791213756422-2300dfde",
         "conversationId": "torpedo-vs-kinnaree",
         "role": "assistant",
-        "content": "📊 **สรุปสถานการณ์ราคาแตงโมวันนี้ (ราคากลางประเทศไทย)** 🍉\n\n- **ราคาหน้าสวน (คละเกรด):** ประมาณ **8.50 – 12.00 บาท/กก.**\n- **เกรด A (ผลสมบูรณ์ น้ำหนัก > 4 กก. ไร้ตำหนิ):** ประมาณ **14.00 – 18.00 บาท/กก.**\n- **ราคาตลาดขายส่ง (ตลาดไท / สี่มุมเมือง):** **16.00 – 22.00 บาท/กก.**\n- **แตงโมพรีเมียม (ไร้เมล็ด / เปลือกเหลือง):** **25.00 – 35.00 บาท/กก.**\n\n💡 สามารถดูราคาแยกตามตลาดและกราฟย้อนหลังได้ที่เมนู **\"ราคาตลาดวันนี้\"** ในแถบเมนูด้านข้างครับ",
+        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
         "attachments": [],
-        "createdAt": "2026-10-05T13:13:38.585Z",
+        "createdAt": "2026-10-05T15:22:36.422Z",
         "status": "completed",
         "modelVersion": "watermelon-expert-rules"
       },
       {
-        "id": "msg-1791206106179-la7ea33",
+        "id": "msg-1791222911059-2acea53b",
         "conversationId": "torpedo-vs-kinnaree",
         "role": "user",
-        "content": "[ส่งภาพใบแตงโมให้วิเคราะห์]",
+        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
+        "attachments": [],
+        "createdAt": "2026-10-05T17:55:11.059Z",
+        "status": "completed"
+      },
+      {
+        "id": "msg-1791222911221-2b88282a",
+        "conversationId": "torpedo-vs-kinnaree",
+        "role": "assistant",
+        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
+        "attachments": [],
+        "createdAt": "2026-10-05T17:55:11.221Z",
+        "status": "completed",
+        "modelVersion": "watermelon-expert-rules"
+      }
+    ],
+    "test-conv-1791222211894": [
+      {
+        "id": "msg-1791222212025-262e79bc",
+        "conversationId": "test-conv-1791222211894",
+        "role": "user",
+        "content": "ช่วยตรวจโรคใบนี้ให้หน่อยครับ",
         "attachments": [
           {
-            "id": "att-1791206106482-maa2962",
+            "id": "att-1791222212131-2762a1fd",
             "type": "image",
-            "name": "1791206106478-chat-leaf.jpg",
+            "name": "1791222212125-chat-leaf.jpg",
             "mimeType": "image/jpeg",
-            "url": "/api/v1/storage/files/591c4934b938dcd035a40396a77fcbada5c4e88c23cb913cd2fa9fddfa95a929/1791810906/1791206106478-chat-leaf.jpg"
+            "url": "/api/v1/storage/files/747ecdd13fc38f036c4e18a0c999b75cc5f8cea87e48f29c8a3230412852eb79/1791827012/1791222212125-chat-leaf.jpg"
           }
         ],
-        "createdAt": "2026-10-05T13:15:06.179Z",
+        "createdAt": "2026-10-05T17:43:32.025Z",
         "status": "completed"
       },
       {
-        "id": "msg-1791206106483-oa5e234",
-        "conversationId": "torpedo-vs-kinnaree",
+        "id": "msg-1791222212132-29ff2b14",
+        "conversationId": "test-conv-1791222211894",
         "role": "assistant",
-        "content": "ขอโทษครับ ภาพนี้ผมยังสรุปไม่ได้ (ความมั่นใจ 58.2%) 🍉\n\nยังไม่ควรพ่นสารตามผลนี้ ถ่ายภาพใบใหม่ให้เห็นแผลชัดในที่แสงธรรมชาติ หรือให้เจ้าหน้าที่เกษตรดูใบจริง\n\n• โมเดลมั่นใจเพียง 58.2% ซึ่งต่ำกว่าเกณฑ์ 90% ที่ตั้งไว้ จึงไม่สรุปผล\n• คะแนนของลักษณะที่มาเป็นอันดับสองอยู่ที่ 21.8% คะแนนกระจายกันจนไม่มีลักษณะใดเด่นพอจะสรุปได้ จึงยังไม่ระบุว่าเป็นโรคใด\n• AI เป็นเครื่องมือช่วยตัดสินใจ ไม่ใช่คำวินิจฉัยยืนยัน ก่อนพ่นสารควรตรวจแปลงจริงหรือปรึกษาเจ้าหน้าที่เกษตร\n• โมเดลตรวจได้เพียง 3 โรค (แอนแทรคโนส ราน้ำค้าง ใบด่าง) และสภาพใบปกติ อีก 5 โรคในคลังความรู้ยังตรวจจากภาพไม่ได้",
+        "content": "จากภาพนี้ผมไม่พบอาการโรคครับ (ความมั่นใจ 90.4%) 🍉\n\nไม่ต้องพ่นสารจากผลนี้ ให้สำรวจใบล่างและใต้ใบทุก 3–5 วันตามรอบปกติ\n\n**แต่อ่านตรงนี้ก่อนนะครับ**\n• \"ไม่พบโรค\" ไม่ได้แปลว่าไม่มีโรค ในชุดทดสอบ โมเดลบอกว่าใบปกติ 50 ครั้ง แต่ผิด 19 ครั้ง ซึ่งเป็นใบที่เป็นโรคจริง\n• โรคราน้ำค้างและใบด่างถูกโมเดลมองข้ามประมาณ 1 ใน 6 ภาพ ถ้าสงสัยให้ตรวจใต้ใบและยอดอ่อนด้วยตาเปล่า\n• AI เป็นเครื่องมือช่วยตัดสินใจ ไม่ใช่คำวินิจฉัยยืนยัน ก่อนพ่นสารควรตรวจแปลงจริงหรือปรึกษาเจ้าหน้าที่เกษตร\n• โมเดลตรวจได้เพียง 3 โรค (แอนแทรคโนส ราน้ำค้าง ใบด่าง) และสภาพใบปกติ อีก 5 โรคในคลังความรู้ยังตรวจจากภาพไม่ได้",
         "attachments": [],
         "diseaseDetection": {
           "success": true,
-          "confidence_percentage": 58.2,
+          "confidence_percentage": 90.4,
           "scores": {
-            "Anthracnose": 0.217701,
-            "Downy_Mildew": 0.121753,
-            "Healthy": 0.58192,
-            "Mosaic_Virus": 0.078626
+            "Anthracnose": 0.0091,
+            "Downy_Mildew": 0.084457,
+            "Healthy": 0.904269,
+            "Mosaic_Virus": 0.002174
           },
           "out_of_scope_diseases": [
             {
@@ -903,205 +968,34 @@
           "escalated_from_healthy": false,
           "confidence_calibrated": false,
           "engine": null,
-          "status": "inconclusive",
+          "status": "healthy",
           "disease_id": null,
-          "model_class": null,
-          "thai_name": "ยังสรุปไม่ได้จากภาพนี้",
-          "scientific_name": "",
-          "severity": "ยังไม่ทราบ",
+          "model_class": "Healthy",
+          "thai_name": "ไม่พบอาการโรคในภาพนี้",
+          "scientific_name": "Citrullus lanatus",
+          "severity": "ไม่พบอาการ",
           "severity_level": 0,
           "symptoms": [],
           "chemical_control": [],
           "organic_control": [],
           "prevention": [],
-          "urgent_action": "ยังไม่ควรพ่นสารตามผลนี้ ถ่ายภาพใบใหม่ให้เห็นแผลชัดในที่แสงธรรมชาติ หรือให้เจ้าหน้าที่เกษตรดูใบจริง",
+          "urgent_action": "ไม่ต้องพ่นสารจากผลนี้ ให้สำรวจใบล่างและใต้ใบทุก 3–5 วันตามรอบปกติ",
           "yield_loss": "",
           "phi_days": null,
-          "phi_note": "ยังไม่แนะนำสารเคมีเพราะยังไม่รู้ว่าเป็นโรคอะไร",
+          "phi_note": "ไม่มีการแนะนำสารเคมีเมื่อไม่พบอาการโรค",
           "model_recall_percentage": null,
           "caveats": [
-            "โมเดลมั่นใจเพียง 58.2% ซึ่งต่ำกว่าเกณฑ์ 90% ที่ตั้งไว้ จึงไม่สรุปผล",
-            "คะแนนของลักษณะที่มาเป็นอันดับสองอยู่ที่ 21.8% คะแนนกระจายกันจนไม่มีลักษณะใดเด่นพอจะสรุปได้ จึงยังไม่ระบุว่าเป็นโรคใด",
+            "\"ไม่พบโรค\" ไม่ได้แปลว่าไม่มีโรค ในชุดทดสอบ โมเดลบอกว่าใบปกติ 50 ครั้ง แต่ผิด 19 ครั้ง ซึ่งเป็นใบที่เป็นโรคจริง",
+            "โรคราน้ำค้างและใบด่างถูกโมเดลมองข้ามประมาณ 1 ใน 6 ภาพ ถ้าสงสัยให้ตรวจใต้ใบและยอดอ่อนด้วยตาเปล่า",
             "AI เป็นเครื่องมือช่วยตัดสินใจ ไม่ใช่คำวินิจฉัยยืนยัน ก่อนพ่นสารควรตรวจแปลงจริงหรือปรึกษาเจ้าหน้าที่เกษตร",
             "โมเดลตรวจได้เพียง 3 โรค (แอนแทรคโนส ราน้ำค้าง ใบด่าง) และสภาพใบปกติ อีก 5 โรคในคลังความรู้ยังตรวจจากภาพไม่ได้"
           ],
-          "recordId": "dis-1791206106482-n16ee8c",
-          "detectedAt": "2026-10-05T13:15:06.482Z"
+          "recordId": "dis-1791222212132-2895b6f0",
+          "detectedAt": "2026-10-05T17:43:32.132Z"
         },
-        "createdAt": "2026-10-05T13:15:06.483Z",
+        "createdAt": "2026-10-05T17:43:32.132Z",
         "status": "completed",
         "modelVersion": "efficientnet_b0@ab47ff1c131c"
-      },
-      {
-        "id": "msg-1791206379335-s7d931a",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "user",
-        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:19:39.335Z",
-        "status": "completed"
-      },
-      {
-        "id": "msg-1791206379508-t2b6388",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "assistant",
-        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:19:39.508Z",
-        "status": "completed",
-        "modelVersion": "watermelon-expert-rules"
-      },
-      {
-        "id": "msg-1791207132109-v0ab07b",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "user",
-        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:32:12.109Z",
-        "status": "completed"
-      },
-      {
-        "id": "msg-1791207132574-w507f5b",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "assistant",
-        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:32:12.574Z",
-        "status": "completed",
-        "modelVersion": "watermelon-expert-rules"
-      },
-      {
-        "id": "msg-1791207534059-ye2332c",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "user",
-        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:38:54.059Z",
-        "status": "completed"
-      },
-      {
-        "id": "msg-1791207534249-z0bcfdf",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "assistant",
-        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:38:54.249Z",
-        "status": "completed",
-        "modelVersion": "watermelon-expert-rules"
-      },
-      {
-        "id": "msg-1791208039137-11484504",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "user",
-        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:47:19.137Z",
-        "status": "completed"
-      },
-      {
-        "id": "msg-1791208039547-127ff99f",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "assistant",
-        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:47:19.548Z",
-        "status": "completed",
-        "modelVersion": "watermelon-expert-rules"
-      },
-      {
-        "id": "msg-1791208051084-148bf01a",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "user",
-        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:47:31.084Z",
-        "status": "completed"
-      },
-      {
-        "id": "msg-1791208051280-15c11e58",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "assistant",
-        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:47:31.280Z",
-        "status": "completed",
-        "modelVersion": "watermelon-expert-rules"
-      },
-      {
-        "id": "msg-1791208074040-17a5728f",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "user",
-        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:47:54.040Z",
-        "status": "completed"
-      },
-      {
-        "id": "msg-1791208074167-18534049",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "assistant",
-        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:47:54.167Z",
-        "status": "completed",
-        "modelVersion": "watermelon-expert-rules"
-      },
-      {
-        "id": "msg-1791208129096-1af0f2a7",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "user",
-        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:48:49.096Z",
-        "status": "completed"
-      },
-      {
-        "id": "msg-1791208129308-1ba81b34",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "assistant",
-        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:48:49.310Z",
-        "status": "completed",
-        "modelVersion": "watermelon-expert-rules"
-      },
-      {
-        "id": "msg-1791208199148-1d6fb44b",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "user",
-        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:49:59.148Z",
-        "status": "completed"
-      },
-      {
-        "id": "msg-1791208199285-1e14ceed",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "assistant",
-        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T13:49:59.285Z",
-        "status": "completed",
-        "modelVersion": "watermelon-expert-rules"
-      },
-      {
-        "id": "msg-1791209152117-1gd3c8ee",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "user",
-        "content": "ขอคำปรึกษาเรื่องโรคใบจุดแอนแทรคโนส (Watermelon Anthracnose) เพิ่มเติมหน่อยครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T14:05:52.117Z",
-        "status": "completed"
-      },
-      {
-        "id": "msg-1791209152280-1hfeb9e1",
-        "conversationId": "torpedo-vs-kinnaree",
-        "role": "assistant",
-        "content": "🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉\n\n- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*\n- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม\n- **แนวทางจัดการ:**\n  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา\n  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**\n  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ",
-        "attachments": [],
-        "createdAt": "2026-10-05T14:05:52.280Z",
-        "status": "completed",
-        "modelVersion": "watermelon-expert-rules"
       }
     ]
   },
@@ -1153,6 +1047,86 @@
   ],
   "reports": [],
   "trainingCandidates": [
+    {
+      "id": "cand-1791222911221-2cb6a94b",
+      "sourceType": "chat",
+      "sourceId": "msg-1791222911221-2b88282a",
+      "ownerId": "guest-anonymous",
+      "userConsentValid": true,
+      "anonymizationStatus": "pending",
+      "qualityReviewStatus": "pending",
+      "createdAt": "2026-10-05"
+    },
+    {
+      "id": "cand-1791213756422-2480acd2",
+      "sourceType": "chat",
+      "sourceId": "msg-1791213756422-2300dfde",
+      "ownerId": "guest-anonymous",
+      "userConsentValid": true,
+      "anonymizationStatus": "pending",
+      "qualityReviewStatus": "pending",
+      "createdAt": "2026-10-05"
+    },
+    {
+      "id": "cand-1791212804225-217670c6",
+      "sourceType": "chat",
+      "sourceId": "msg-1791212804225-20f3a80d",
+      "ownerId": "guest-anonymous",
+      "userConsentValid": true,
+      "anonymizationStatus": "pending",
+      "qualityReviewStatus": "pending",
+      "createdAt": "2026-10-05"
+    },
+    {
+      "id": "cand-1791212425223-1y699b3e",
+      "sourceType": "chat",
+      "sourceId": "msg-1791212425223-1xc3246e",
+      "ownerId": "guest-anonymous",
+      "userConsentValid": true,
+      "anonymizationStatus": "pending",
+      "qualityReviewStatus": "pending",
+      "createdAt": "2026-10-05"
+    },
+    {
+      "id": "cand-1791211826281-1v44bddf",
+      "sourceType": "chat",
+      "sourceId": "msg-1791211826281-1u9014f4",
+      "ownerId": "guest-anonymous",
+      "userConsentValid": true,
+      "anonymizationStatus": "pending",
+      "qualityReviewStatus": "pending",
+      "createdAt": "2026-10-05"
+    },
+    {
+      "id": "cand-1791209838272-1r1a4024",
+      "sourceType": "chat",
+      "sourceId": "msg-1791209838272-1q79a790",
+      "ownerId": "guest-anonymous",
+      "userConsentValid": true,
+      "anonymizationStatus": "pending",
+      "qualityReviewStatus": "pending",
+      "createdAt": "2026-10-05"
+    },
+    {
+      "id": "cand-1791209289296-1o11125f",
+      "sourceType": "chat",
+      "sourceId": "msg-1791209289296-1nf5ce0c",
+      "ownerId": "guest-anonymous",
+      "userConsentValid": true,
+      "anonymizationStatus": "pending",
+      "qualityReviewStatus": "pending",
+      "createdAt": "2026-10-05"
+    },
+    {
+      "id": "cand-1791209228230-1la4717f",
+      "sourceType": "chat",
+      "sourceId": "msg-1791209228229-1kfe9273",
+      "ownerId": "guest-anonymous",
+      "userConsentValid": true,
+      "anonymizationStatus": "pending",
+      "qualityReviewStatus": "pending",
+      "createdAt": "2026-10-05"
+    },
     {
       "id": "cand-1791209152280-1i7b9589",
       "sourceType": "chat",
@@ -7434,6 +7408,55 @@
   ],
   "auditLogs": [
     {
+      "id": "log-1791222212132-yw8m",
+      "action": "CHAT_VISION",
+      "actorId": "test-conv-1791222211894",
+      "details": "healthy: ไม่พบอาการโรคในภาพนี้",
+      "timestamp": "2026-10-05T17:43:32.132Z"
+    },
+    {
+      "id": "log-1791222212132-rle0",
+      "action": "DISEASE_DETECT",
+      "actorId": "guest-anonymous",
+      "details": "healthy: ไม่พบอาการโรคในภาพนี้ at 90.4% (efficientnet_b0@ab47ff1c131c)",
+      "timestamp": "2026-10-05T17:43:32.132Z"
+    },
+    {
+      "id": "log-1791222155917-i2wl",
+      "action": "DISEASE_DETECT",
+      "actorId": "guest-anonymous",
+      "details": "healthy: ไม่พบอาการโรคในภาพนี้ at 90.4% (efficientnet_b0@ab47ff1c131c)",
+      "timestamp": "2026-10-05T17:42:35.917Z"
+    },
+    {
+      "id": "log-1791210505111-2lo2",
+      "action": "AUTH_SOCIAL_LOGIN",
+      "actorId": "usr-1791188004907",
+      "details": "Social login via google",
+      "timestamp": "2026-10-05T14:28:25.111Z"
+    },
+    {
+      "id": "log-1791210490707-8vo6",
+      "action": "CONVERSATION_DELETED",
+      "actorId": "guest-anonymous",
+      "details": "Deleted conversation torpedo-vs-kinnaree",
+      "timestamp": "2026-10-05T14:28:10.707Z"
+    },
+    {
+      "id": "log-1791210446556-x44s",
+      "action": "AUTH_SOCIAL_LOGIN",
+      "actorId": "usr-1791188004907",
+      "details": "Social login via google",
+      "timestamp": "2026-10-05T14:27:26.556Z"
+    },
+    {
+      "id": "log-1791210161235-bmtr",
+      "action": "AUTH_SOCIAL_LOGIN",
+      "actorId": "usr-1791210161235-1sf82613",
+      "details": "Social login via google",
+      "timestamp": "2026-10-05T14:22:41.235Z"
+    },
+    {
       "id": "log-1791206371524-ohtk",
       "action": "DISEASE_DETECT",
       "actorId": "guest-anonymous",
@@ -8089,6 +8112,14 @@
       "email": "phisit.ka@kkumail.com",
       "role": "user",
       "avatar": "https://lh3.googleusercontent.com/a/ACg8ocIf3wyJzO_-8FVav-G8xAUJ9zPfQpinULB3wTXgFOwJbHEWrQ=s96-c",
+      "provider": "google"
+    },
+    {
+      "id": "usr-1791210161235-1sf82613",
+      "name": "Jd Vdkv",
+      "email": "jdvdkv436@gmail.com",
+      "role": "user",
+      "avatar": "https://lh3.googleusercontent.com/a/ACg8ocLJGNxianXvpOWSXvf8w5-MZKDqAGHUy-S9fxR7TF0V0eZDqQ=s96-c",
       "provider": "google"
     }
   ],

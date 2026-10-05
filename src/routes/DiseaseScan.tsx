@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { AppShell, PageContainer, PageHeading } from '../components/layout/AppShell';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Badge, LiveBadge } from '../components/ui/Badge';
@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
 import { useToast } from '../components/ui/Toast';
 import { DiseaseResultCard } from '../components/domain/DiseaseResultCard';
-import { api, type DiseaseDetection } from '../lib/api';
+import { api, type DiseaseDetection, type DiseaseModelStatus } from '../lib/api';
 import { compressImage, validateImage } from '../lib/media';
 import { cn } from '../lib/cn';
 import type { ResourceState } from '../types/resource';
@@ -36,9 +36,39 @@ export function DiseaseScan() {
   const [incidence, setIncidence] = useState<string>('isolated');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [scanState, setScanState] = useState<ResourceState<DiseaseDetection>>({ status: 'idle' });
+  const [modelStatus, setModelStatus] = useState<DiseaseModelStatus | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+
+  useEffect(() => {
+    let active = true;
+    api
+      .diseaseModelStatus()
+      .then((res) => {
+        if (active) setModelStatus(res);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function loadSampleImage() {
+    try {
+      const response = await fetch('/assets/healthy_vs_infected_leaf.png');
+      const blob = await response.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+        setScanState({ status: 'idle' });
+        toast.info('โหลดภาพตัวอย่างเรียบร้อย กดปุ่ม "ส่งตรวจโรคด้วย Vision Engine" เพื่อเริ่มการวิเคราะห์ได้เลยครับ');
+      };
+      reader.readAsDataURL(blob);
+    } catch {
+      toast.error('ไม่สามารถโหลดภาพตัวอย่างได้');
+    }
+  }
 
   async function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -110,7 +140,11 @@ export function DiseaseScan() {
           eyebrow={
             <>
               <Badge tone="primary">DIAGNOSTIC WORKFLOW</Badge>
-              <LiveBadge>Vision Engine v3</LiveBadge>
+              {modelStatus?.online ? (
+                <LiveBadge>Vision Engine v3 ({modelStatus.vision?.architecture || 'EfficientNet-B0'}) ออนไลน์</LiveBadge>
+              ) : (
+                <LiveBadge>Vision Engine v3</LiveBadge>
+              )}
             </>
           }
           title="ตรวจโรคใบแตงโมโดยตรง"
@@ -165,23 +199,37 @@ export function DiseaseScan() {
                   </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-primary/30 bg-melon-tint/40 p-8 text-center transition-all hover:border-primary active:scale-[0.99]"
-                >
-                  <span className="flex size-14 items-center justify-center rounded-full bg-primary-fixed text-primary shadow-sm">
-                    <Icon name="add_a_photo" size={28} />
-                  </span>
-                  <div>
-                    <p className="text-label-lg font-bold text-on-surface">
-                      แตะเพื่อถ่ายภาพหรือเลือกไฟล์
-                    </p>
-                    <p className="text-caption text-on-surface-variant">
-                      รองรับ JPG, PNG, WEBP (บีบอัดอัตโนมัติก่อนส่ง)
-                    </p>
+                <div className="flex flex-col gap-3">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-primary/30 bg-melon-tint/40 p-8 text-center transition-all hover:border-primary active:scale-[0.99] cursor-pointer"
+                  >
+                    <span className="flex size-14 items-center justify-center rounded-full bg-primary-fixed text-primary shadow-sm">
+                      <Icon name="add_a_photo" size={28} />
+                    </span>
+                    <div>
+                      <p className="text-label-lg font-bold text-on-surface">
+                        แตะเพื่อถ่ายภาพหรือเลือกไฟล์
+                      </p>
+                      <p className="text-caption text-on-surface-variant">
+                        รองรับ JPG, PNG, WEBP (บีบอัดอัตโนมัติก่อนส่ง)
+                      </p>
+                    </div>
+                  </button>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-low p-2.5 border border-outline-variant/30">
+                    <span className="text-caption text-on-surface-variant">ไม่มีภาพใบแตงโมอยู่ในเครื่อง?</span>
+                    <button
+                      type="button"
+                      onClick={loadSampleImage}
+                      className="inline-flex cursor-pointer items-center gap-1.5 text-label-md font-semibold text-primary hover:underline"
+                    >
+                      <Icon name="visibility" size={16} />
+                      ใช้ภาพตัวอย่างทดสอบโมเดล AI
+                    </button>
                   </div>
-                </button>
+                </div>
               )}
             </Card>
 

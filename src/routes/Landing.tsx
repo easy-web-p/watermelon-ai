@@ -282,6 +282,13 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
               </button>
             ))}
           </div>
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-caption text-on-surface-variant">ต้องการตรวจวิเคราะห์เต็มระบบ?</span>
+            <Link to="/disease-scan" className="text-caption font-bold text-primary hover:underline inline-flex items-center gap-1">
+              เปิดหน้าตรวจโรคใบด้วย AI (โมเดลจริง)
+              <Icon name="arrow_forward" size={14} />
+            </Link>
+          </div>
         </div>
 
         {/* Diagnosis Report Card */}
@@ -459,9 +466,13 @@ export function Landing() {
               </p>
 
               <div className="flex flex-wrap items-center gap-3 pt-1">
-                <Button size="lg" onClick={() => navigate('/chat')}>
-                  <Icon name="photo_camera" size={20} />
-                  ทดลองสแกนโรคพืชฟรี
+                <Button size="lg" onClick={() => navigate('/disease-scan')}>
+                  <Icon name="biotech" size={20} />
+                  ตรวจโรคใบด้วย AI (โมเดลจริง)
+                </Button>
+                <Button size="lg" variant="secondary" onClick={() => navigate('/chat')}>
+                  <Icon name="forum" size={20} />
+                  ปรึกษาน้องแตงโม AI
                 </Button>
                 <a
                   href="#scan-demo"
