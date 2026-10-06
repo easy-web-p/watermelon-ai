@@ -26,6 +26,7 @@ import {
   type DiseaseDetection,
   type VisionPrediction,
 } from "./src/lib/diseaseModel";
+import { VISION_ENGINE_NAMES, claudeCandidates } from "./src/lib/visionEngines";
 
 dotenv.config();
 
@@ -1665,7 +1666,9 @@ const VISION_MODES = ["fast", "balanced", "deep"] as const;
  * engine ตัวอื่นเข้าถึงได้ทาง `/watermelon/vision-compare` ซึ่งคืนผลดิบจากเซอร์วิส
  * พร้อมระบุชัดว่าไม่ใช่คำวินิจฉัยและไม่ผ่านการจับคู่กับแผนการรักษา
  */
-const VISION_ENGINES = ["legacy4", "wide9", "claude"] as const;
+// รายชื่อ engine มาจาก src/lib/visionEngines.ts ที่เดียว ไม่เขียนซ้ำที่นี่
+// สำเนาที่สองจะเพี้ยนเงียบ ๆ เมื่อฝั่งเซอร์วิสเพิ่มหรือเลิกใช้ engine ตัวใด
+const VISION_ENGINES = VISION_ENGINE_NAMES;
 type VisionEngineName = (typeof VISION_ENGINES)[number];
 
 /** claude เรียกโมเดลภาษาที่ใช้เวลาคิดนานกว่าโมเดลจำแนกหลายเท่า */
@@ -1892,15 +1895,10 @@ app.post("/api/v1/watermelon/vision-compare", async (req, res) => {
     : undefined;
 
   // claude เลือกจากรายชื่อโรคที่เราส่งไปให้ เซอร์วิส Python ไม่เก็บแคตตาล็อกไว้เอง
-  // ส่งเฉพาะรหัส ชื่อ และอาการย่อ ไม่ส่งอัตราสารหรือค่า PHI ให้โมเดลเห็น
-  const candidates =
-    selected === "claude"
-      ? DISEASES.map((d) => ({
-          id: d.id,
-          name: d.name,
-          cues: d.symptoms.slice(0, 2).join(" / ").slice(0, 220),
-        }))
-      : undefined;
+  // ใช้ claudeCandidates() ไม่ใช่เขียนการตัดฟิลด์ซ้ำที่นี่ เพราะฟังก์ชันนั้นมีเทสต์
+  // (src/lib/visionEngines.test.ts) ที่ยืนยันว่าไม่มีอัตราสารหรือค่า PHI หลุดไปถึงโมเดล
+  // สำเนาที่สองในไฟล์นี้จะไม่มีเทสต์คุม ถ้าใครเพิ่มฟิลด์เข้ามาก็จะหลุดไปโดยไม่มีอะไรฟ้อง
+  const candidates = selected === "claude" ? claudeCandidates() : undefined;
 
   try {
     const response = await fetch(`${VISION_SERVICE_URL}/predict-base64`, {
@@ -1916,15 +1914,30 @@ app.post("/api/v1/watermelon/vision-compare", async (req, res) => {
     });
 
     const body = await response.json().catch(() => ({}));
+    const detail =
+      typeof body === "object" && body && "detail" in body ? String(body.detail).slice(0, 300) : undefined;
     if (!response.ok) {
+      // 503 จากเซอร์วิสคือเหตุที่ลองใหม่แล้วได้ผลเดิม (คีย์ใช้ไม่ได้ เครดิตหมด
+      // ชื่อโมเดลผิด) ต้องส่ง retryable: false ออกไปด้วย ไม่ใช่กลืนรวมกับ 502
+      // แล้วให้หน้าจอชวนผู้ใช้กดซ้ำไปเรื่อย ๆ รายละเอียดจากเซอร์วิสบอกทางแก้ไว้แล้ว
+      if (response.status === 503) {
+        return res.status(503).json({
+          success: false,
+          engine: selected,
+          retryable: false,
+          error: `เครื่องยนต์ ${selected} ยังใช้งานไม่ได้ และการลองใหม่จะได้ผลเดิม`,
+          detail,
+        });
+      }
       const clientFault = response.status >= 400 && response.status < 500;
       return res.status(clientFault ? 422 : 502).json({
         success: false,
         engine: selected,
+        retryable: !clientFault,
         error: clientFault
           ? "อ่านภาพไม่สำเร็จหรือคำขอไม่ถูกต้อง"
           : "เครื่องยนต์วิเคราะห์ภาพตอบกลับผิดพลาด",
-        detail: typeof body === "object" && body && "detail" in body ? String(body.detail).slice(0, 300) : undefined,
+        detail,
       });
     }
 

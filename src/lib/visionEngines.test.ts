@@ -89,6 +89,19 @@ describe('claude candidate list', () => {
     }
   });
 
+  it('sends exactly three fields — ไม่ให้ฟิลด์ใหม่ติดไปด้วย', () => {
+    // การตรวจคำต้องห้ามด้านบนจับได้เฉพาะคำที่เรานึกออก ส่วนการตรึงชุดคีย์จับได้ทุกฟิลด์
+    // ที่ถูกเพิ่มเข้ามาในอนาคต รวมถึงฟิลด์ที่ยังไม่มีใครตั้งชื่อ เช่นถ้า diseases.ts
+    // เพิ่ม chemicalControl แล้วมีคนส่ง ...d เข้าไป เทสต์นี้จะฟ้องทันที
+    for (const candidate of claudeCandidates()) {
+      expect(Object.keys(candidate).sort(), `${candidate.id} ส่งฟิลด์เกิน`).toEqual([
+        'cues',
+        'id',
+        'name',
+      ]);
+    }
+  });
+
   it('keeps each candidate small enough to stay affordable', () => {
     for (const candidate of claudeCandidates()) {
       expect(candidate.cues.length, `${candidate.id} มีข้อความยาวเกินไป`).toBeLessThanOrEqual(220);

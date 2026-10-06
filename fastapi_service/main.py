@@ -52,6 +52,13 @@ import engines
 import inference
 from model import CLASSES, IMAGE_SIZE, preprocess, softmax
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    load_dotenv()
+except ImportError:
+    pass
+
 MODEL_PATH = Path(os.getenv("MODEL_PATH", Path(__file__).with_name("model.onnx")))
 METRICS_PATH = Path(__file__).with_name("metrics.json")
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
@@ -270,8 +277,13 @@ def _predict(
     """เรียก engine ที่เลือก และแปลงข้อผิดพลาดให้เป็น HTTP ที่สื่อความ
 
     engine ที่ต้องพึ่งบริการภายนอก (claude) ล้มได้ด้วยเหตุที่ผู้เรียกแก้ไม่ได้
-    เช่น เครือข่ายล่มหรือโควตาหมด ซึ่งต้องเป็น 502 ไม่ใช่ 500 และต้องไม่ถอยไปใช้
-    engine อื่นเงียบ ๆ เพราะผู้เรียกจะตีความตัวเลขความมั่นใจผิดโมเดล
+    ซึ่งต้องไม่เป็น 500 และต้องไม่ถอยไปใช้ engine อื่นเงียบ ๆ เพราะผู้เรียกจะ
+    ตีความตัวเลขความมั่นใจผิดโมเดล เหตุเหล่านั้นแยกเป็นสองกลุ่ม
+
+    * 502 — เหตุชั่วคราว เครือข่ายสะดุด โควตาต่อนาทีเต็ม เซิร์ฟเวอร์ต้นทางล่ม
+      ลองใหม่แล้วมีโอกาสสำเร็จ
+    * 503 — เหตุที่ต้องให้ผู้ดูแลระบบไปแก้ก่อน คีย์ใช้ไม่ได้ เครดิตหมด ชื่อโมเดลผิด
+      ลองใหม่กี่ครั้งก็ได้ผลเดิม ดู ``engines.EngineUnavailable``
     """
     payload = context or {}
     if engine.needs_candidates and not payload.get("candidates"):
@@ -286,6 +298,14 @@ def _predict(
         return engine.predict(image, mode, payload)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except engines.EngineUnavailable as exc:
+        # 503 ไม่ใช่ 502 เพราะเหตุกลุ่มนี้ลองใหม่แล้วได้ผลเดิมทุกครั้ง
+        # (คีย์ใช้ไม่ได้ เครดิตหมด ชื่อโมเดลผิด) ผู้เรียกจึงต้องหยุดชวนให้กดซ้ำ
+        # แล้วบอกให้ไปแก้ค่าที่ตั้งไว้ หรือสลับไป engine ที่รันในเครื่องแทน
+        raise HTTPException(
+            status_code=503,
+            detail=f"engine '{engine.name}' ใช้งานไม่ได้: {exc}",
+        ) from exc
     except Exception as exc:  # noqa: BLE001 — ครอบคลุมความล้มเหลวของบริการภายนอก
         raise HTTPException(
             status_code=502,
