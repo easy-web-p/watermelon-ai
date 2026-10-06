@@ -9,7 +9,8 @@ import { MelonAvatar } from '../components/brand/Logo';
 import { useToast } from '../components/ui/Toast';
 import { Link, useRouter } from '../lib/router';
 import { cn } from '../lib/cn';
-import { api, type DiseaseDetection } from '../lib/api';
+import { ApiError, NetworkError, api, type DiseaseDetection } from '../lib/api';
+import { runClientDiseaseAnalysis } from '../lib/clientDiseaseHeuristic';
 
 const STITCH_CASES = [
   {
@@ -135,10 +136,27 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
       setPhase('scanning');
 
       try {
-        const result = await api.detectDisease({
-          imageBase64: base64,
-          notes: 'Landing Live Scan Demo',
-        });
+        let result: DiseaseDetection;
+        try {
+          result = await api.detectDisease({
+            imageBase64: base64,
+            notes: 'Landing Live Scan Demo',
+          });
+        } catch (apiErr) {
+          const isOfflineOrPreview =
+            (apiErr instanceof ApiError && (apiErr.status === 404 || apiErr.status === 502 || apiErr.status === 503)) ||
+            apiErr instanceof NetworkError;
+          if (isOfflineOrPreview) {
+            result = await runClientDiseaseAnalysis(base64, {
+              plantPart: 'mature_leaf',
+              onset: 'few_days',
+              incidence: 'patch',
+            });
+          } else {
+            throw apiErr;
+          }
+        }
+
         setCustomDiagnosis(result);
         setPhase('done');
         if (result.status === 'diagnosed') {

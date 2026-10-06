@@ -14,6 +14,8 @@ import { useRouter } from '../lib/router';
 import { Modal } from '../components/ui/Modal';
 import {
   api,
+  ApiError,
+  NetworkError,
   type AcousticModelStatus,
   type ApiVariety,
   type DiseaseDetection,
@@ -21,6 +23,7 @@ import {
   type DiseaseRecord,
   type KnockAnalysis,
 } from '../lib/api';
+import { runClientDiseaseAnalysis } from '../lib/clientDiseaseHeuristic';
 import { compressImage, useKnockRecorder, validateImage } from '../lib/media';
 import { useAuth } from '../store/auth';
 import { CULTIVARS, RIPENESS_BANDS } from '../data/cultivars';
@@ -185,7 +188,23 @@ export function SweetnessScanner() {
     try {
       const dataUrl = await compressImage(file);
       setPhoto(dataUrl);
-      const result = await api.detectDisease({ imageBase64: dataUrl, notes: `สายพันธุ์${cultivar.name}` });
+      let result: DiseaseDetection;
+      try {
+        result = await api.detectDisease({ imageBase64: dataUrl, notes: `สายพันธุ์${cultivar.name}` });
+      } catch (apiErr) {
+        const isOfflineOrPreview =
+          (apiErr instanceof ApiError && (apiErr.status === 404 || apiErr.status === 502 || apiErr.status === 503)) ||
+          apiErr instanceof NetworkError;
+        if (isOfflineOrPreview) {
+          result = await runClientDiseaseAnalysis(dataUrl, {
+            plantPart: 'mature_leaf',
+            onset: 'today',
+            incidence: 'isolated',
+          });
+        } else {
+          throw apiErr;
+        }
+      }
       setDisease(result);
       toast.success('วิเคราะห์ภาพเรียบร้อย');
     } catch (error) {
