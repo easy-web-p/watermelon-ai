@@ -8,8 +8,16 @@ import { MelonAvatar } from '../components/brand/Logo';
 import { useToast } from '../components/ui/Toast';
 import { Link, useRouter } from '../lib/router';
 import { cn } from '../lib/cn';
-import { ApiError, NetworkError, api, type DiseaseDetection } from '../lib/api';
+import {
+  ApiError,
+  NetworkError,
+  api,
+  type DiseaseDetection,
+  type VisionCompareResponse,
+} from '../lib/api';
 import { runClientDiseaseAnalysis } from '../lib/clientDiseaseHeuristic';
+import { VisionCompareCard } from '../components/domain/VisionCompareCard';
+import type { VisionEngineName } from '../lib/visionEngines';
 
 const STITCH_CASES = [
   {
@@ -68,6 +76,8 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'done'>('done');
   const [customImage, setCustomImage] = useState<string | null>(null);
   const [customDiagnosis, setCustomDiagnosis] = useState<DiseaseDetection | null>(null);
+  const [demoEngine, setDemoEngine] = useState<VisionEngineName>('claude');
+  const [compareData, setCompareData] = useState<VisionCompareResponse | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timers = useRef<number[]>([]);
   const toast = useToast();
@@ -101,6 +111,7 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
     setSelected(index);
     setCustomImage(null);
     setCustomDiagnosis(null);
+    setCompareData(null);
     setPhase('scanning');
     timers.current = [window.setTimeout(() => setPhase('done'), 1400)];
   }
@@ -118,6 +129,21 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
 
       try {
         let result: DiseaseDetection;
+        let compRes: VisionCompareResponse | null = null;
+
+        if (demoEngine === 'claude' || demoEngine === 'wide9') {
+          try {
+            compRes = await api.visionCompare({
+              imageBase64: base64,
+              engine: demoEngine,
+              notes: 'Landing Live Scan Demo',
+            });
+            setCompareData(compRes);
+          } catch (cmpErr) {
+            console.warn('Vision compare on landing failed, falling back', cmpErr);
+          }
+        }
+
         try {
           result = await api.detectDisease({
             imageBase64: base64,
@@ -140,7 +166,11 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
 
         setCustomDiagnosis(result);
         setPhase('done');
-        if (result.status === 'diagnosed') {
+        if (compRes) {
+          toast.success(
+            `AI วิเคราะห์ด้วย ${demoEngine === 'claude' ? 'Claude Vision (เทพสุด)' : 'Wide-9'} สำเร็จ`,
+          );
+        } else if (result.status === 'diagnosed') {
           toast.success(`AI ตรวจพบ: ${result.thai_name} (ความมั่นใจ ${result.confidence_percentage}%)`);
         } else {
           toast.info(`${result.thai_name} (ความมั่นใจ ${result.confidence_percentage}%)`);
@@ -148,6 +178,7 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
       } catch (err) {
         console.warn('Disease detection failed', err);
         setCustomDiagnosis(null);
+        setCompareData(null);
         // Drop the upload and fall back to the clearly-labelled sample case,
         // so nothing on screen claims to be a reading of the user's photo.
         setCustomImage(null);
@@ -253,13 +284,56 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
           </div>
         </div>
       </div>
-
       {/* Right Column: Case Selection & Diagnostic Report */}
       <div className="flex flex-col gap-4 lg:col-span-6">
         <div>
-          <p className="mb-2 text-label-md font-bold tracking-wider text-secondary uppercase">
-            คลิกเลือกตัวอย่างโรคพืชเพื่อทดสอบ
-          </p>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-label-md font-bold tracking-wider text-secondary uppercase">
+              คลิกเลือกตัวอย่างโรคพืชเพื่อทดสอบ
+            </p>
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-on-surface-variant font-medium">โมเดล AI:</span>
+              <button
+                type="button"
+                onClick={() => setDemoEngine('claude')}
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-all cursor-pointer',
+                  demoEngine === 'claude'
+                    ? 'bg-primary text-on-primary shadow-xs'
+                    : 'bg-surface-lowest text-on-surface-variant hover:bg-surface-container',
+                )}
+                title="Claude Vision: โมเดลวิเคราะห์เชิงลึกระดับสูง คิดรอบด้านนอกกรอบคลาส"
+              >
+                ✨ Claude Vision (เทพสุด)
+              </button>
+              <button
+                type="button"
+                onClick={() => setDemoEngine('wide9')}
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-all cursor-pointer',
+                  demoEngine === 'wide9'
+                    ? 'bg-secondary text-on-secondary shadow-xs'
+                    : 'bg-surface-lowest text-on-surface-variant hover:bg-surface-container',
+                )}
+                title="Wide-9: โมเดล 9 คลาส รวมราแป้ง"
+              >
+                Wide-9
+              </button>
+              <button
+                type="button"
+                onClick={() => setDemoEngine('legacy4')}
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-all cursor-pointer',
+                  demoEngine === 'legacy4'
+                    ? 'bg-outline text-surface-lowest shadow-xs'
+                    : 'bg-surface-lowest text-on-surface-variant hover:bg-surface-container',
+                )}
+                title="Legacy-4: โมเดล 4 คลาสหลัก"
+              >
+                Legacy-4
+              </button>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
             {STITCH_CASES.map((item, index) => (
               <button
@@ -378,6 +452,12 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
             </Link>
           </div>
         </div>
+
+        {compareData && (
+          <div className="mt-1">
+            <VisionCompareCard compareResult={compareData} />
+          </div>
+        )}
       </div>
     </div>
   );

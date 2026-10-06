@@ -24,7 +24,7 @@ import { cn } from '../lib/cn';
 import type { ResourceState } from '../types/resource';
 import type { VisionEngineInfo, VisionEngineName } from '../lib/visionEngines';
 
-const FALLBACK_ENGINES: VisionEngineInfo[] = [
+export const FALLBACK_ENGINES: VisionEngineInfo[] = [
   {
     name: 'legacy4',
     title_th: 'Legacy 4 (โมเดลมาตรฐาน)',
@@ -469,15 +469,18 @@ export function DiseaseScan() {
                   type="button"
                   onClick={() => setSelectedEngine('claude')}
                   className={cn(
-                    'flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer',
+                    'relative flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer',
                     selectedEngine === 'claude'
                       ? 'border-primary bg-melon-tint text-primary shadow-xs ring-1 ring-primary'
                       : 'border-outline-variant/30 bg-surface-low text-on-surface-variant hover:bg-surface-container',
                   )}
                 >
+                  <span className="absolute -top-2 right-1 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-extrabold text-on-primary shadow-xs">
+                    ⚡ เทพสุด
+                  </span>
                   <span className="text-label-md font-bold">Claude Vision</span>
-                  <span className="text-[11px] leading-tight">วิเคราะห์เชิงลึก</span>
-                  <span className="mt-1 text-[10px] text-outline font-semibold">⚠️ ไม่จำกัดคลาส</span>
+                  <span className="text-[11px] leading-tight">คิดวิเคราะห์เชิงลึก</span>
+                  <span className="mt-1 text-[10px] text-primary font-semibold">✨ ละเอียดสูงสุด</span>
                 </button>
               </div>
 

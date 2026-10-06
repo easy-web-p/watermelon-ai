@@ -9,6 +9,10 @@ import { Segmented } from '../components/ui/Segmented';
 import { useToast } from '../components/ui/Toast';
 import { KnockResultCard } from '../components/domain/KnockResultCard';
 import { DiseaseResultCard } from '../components/domain/DiseaseResultCard';
+import { VisionCompareCard } from '../components/domain/VisionCompareCard';
+import { VisionEngineModal } from '../components/domain/VisionEngineModal';
+import type { VisionEngineInfo, VisionEngineName } from '../lib/visionEngines';
+import { FALLBACK_ENGINES } from './DiseaseScan';
 import { cn } from '../lib/cn';
 import { useRouter } from '../lib/router';
 import { Modal } from '../components/ui/Modal';
@@ -22,6 +26,7 @@ import {
   type DiseaseModelStatus,
   type DiseaseRecord,
   type KnockAnalysis,
+  type VisionCompareResponse,
 } from '../lib/api';
 import { runClientDiseaseAnalysis } from '../lib/clientDiseaseHeuristic';
 import { compressImage, useKnockRecorder, validateImage } from '../lib/media';
@@ -83,6 +88,10 @@ export function SweetnessScanner() {
   const [cultivarId, setCultivarId] = useState(CULTIVARS[0].id);
   const [knock, setKnock] = useState<KnockAnalysis | null>(null);
   const [disease, setDisease] = useState<DiseaseDetection | null>(null);
+  const [compareData, setCompareData] = useState<VisionCompareResponse | null>(null);
+  const [photoEngine, setPhotoEngine] = useState<VisionEngineName>('claude');
+  const [engineList, setEngineList] = useState<readonly VisionEngineInfo[]>(FALLBACK_ENGINES);
+  const [engineModalOpen, setEngineModalOpen] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [varieties, setVarieties] = useState<ApiVariety[]>([]);
@@ -121,6 +130,15 @@ export function SweetnessScanner() {
       .diseaseModelStatus()
       .then((st) => {
         if (!cancelled) setDiseaseStatus(st);
+      })
+      .catch(() => undefined);
+
+    api
+      .visionEngines()
+      .then((res) => {
+        if (!cancelled && res.engines && res.engines.length > 0) {
+          setEngineList(res.engines);
+        }
       })
       .catch(() => undefined);
 
@@ -185,28 +203,62 @@ export function SweetnessScanner() {
 
     setBusy(true);
     setKnock(null);
+    setDisease(null);
+    setCompareData(null);
     try {
       const dataUrl = await compressImage(file);
       setPhoto(dataUrl);
-      let result: DiseaseDetection;
-      try {
-        result = await api.detectDisease({ imageBase64: dataUrl, notes: `สายพันธุ์${cultivar.name}` });
-      } catch (apiErr) {
-        const isOfflineOrPreview =
-          (apiErr instanceof ApiError && (apiErr.status === 404 || apiErr.status === 502 || apiErr.status === 503)) ||
-          apiErr instanceof NetworkError;
-        if (isOfflineOrPreview) {
-          result = await runClientDiseaseAnalysis(dataUrl, {
-            plantPart: 'mature_leaf',
-            onset: 'today',
-            incidence: 'isolated',
+
+      if (photoEngine === 'claude' || photoEngine === 'wide9') {
+        try {
+          const compRes = await api.visionCompare({
+            imageBase64: dataUrl,
+            engine: photoEngine,
+            notes: `สายพันธุ์${cultivar.name}`,
           });
-        } else {
-          throw apiErr;
+          setCompareData(compRes);
+          toast.success(`วิเคราะห์ภาพสำเร็จด้วย ${photoEngine === 'claude' ? 'Claude Vision (เทพสุด)' : 'Wide-9'}`);
+        } catch (compErr) {
+          // If visionCompare fails or offline, fallback to standard detectDisease
+          const fallback = await api
+            .detectDisease({ imageBase64: dataUrl, notes: `สายพันธุ์${cultivar.name}` })
+            .catch(async (apiErr) => {
+              const isOfflineOrPreview =
+                (apiErr instanceof ApiError && (apiErr.status === 404 || apiErr.status === 502 || apiErr.status === 503)) ||
+                apiErr instanceof NetworkError;
+              if (isOfflineOrPreview) {
+                return await runClientDiseaseAnalysis(dataUrl, {
+                  plantPart: 'mature_leaf',
+                  onset: 'today',
+                  incidence: 'isolated',
+                });
+              }
+              throw apiErr;
+            });
+          setDisease(fallback);
+          toast.success('วิเคราะห์ภาพเรียบร้อย (โหมดพื้นฐาน)');
         }
+      } else {
+        let result: DiseaseDetection;
+        try {
+          result = await api.detectDisease({ imageBase64: dataUrl, notes: `สายพันธุ์${cultivar.name}`, engine: 'legacy4' });
+        } catch (apiErr) {
+          const isOfflineOrPreview =
+            (apiErr instanceof ApiError && (apiErr.status === 404 || apiErr.status === 502 || apiErr.status === 503)) ||
+            apiErr instanceof NetworkError;
+          if (isOfflineOrPreview) {
+            result = await runClientDiseaseAnalysis(dataUrl, {
+              plantPart: 'mature_leaf',
+              onset: 'today',
+              incidence: 'isolated',
+            });
+          } else {
+            throw apiErr;
+          }
+        }
+        setDisease(result);
+        toast.success('วิเคราะห์ภาพเรียบร้อย');
       }
-      setDisease(result);
-      toast.success('วิเคราะห์ภาพเรียบร้อย');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'วิเคราะห์ภาพไม่สำเร็จ');
     } finally {
@@ -215,7 +267,7 @@ export function SweetnessScanner() {
   }
 
   const recording = recorder.state === 'recording';
-  const hasResult = Boolean(knock || disease);
+  const hasResult = Boolean(knock || disease || compareData);
 
   const ripenessBand = knock
     ? knock.probabilities.ripe >= knock.probabilities.unripe && knock.probabilities.ripe >= knock.probabilities.overripe
@@ -380,6 +432,59 @@ export function SweetnessScanner() {
                 </>
               ) : (
                 <>
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-container/70 p-3 border border-outline-variant/30">
+                    <div className="flex items-center gap-1.5 text-caption font-semibold text-on-surface-variant">
+                      <Icon name="psychology" size={16} className="text-secondary" />
+                      <span>เครื่องยนต์ AI วิเคราะห์โรค:</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPhotoEngine('claude')}
+                        className={cn(
+                          'cursor-pointer rounded-full px-3 py-1 text-label-xs font-semibold transition-all duration-150',
+                          photoEngine === 'claude'
+                            ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-sm ring-1 ring-amber-400'
+                            : 'bg-surface-low text-on-surface-variant hover:bg-surface-container',
+                        )}
+                      >
+                        ✨ Claude Vision (เทพสุด)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPhotoEngine('wide9')}
+                        className={cn(
+                          'cursor-pointer rounded-full px-3 py-1 text-label-xs font-semibold transition-all duration-150',
+                          photoEngine === 'wide9'
+                            ? 'bg-secondary text-on-secondary shadow-sm'
+                            : 'bg-surface-low text-on-surface-variant hover:bg-surface-container',
+                        )}
+                      >
+                        🔬 Wide-9
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPhotoEngine('legacy4')}
+                        className={cn(
+                          'cursor-pointer rounded-full px-3 py-1 text-label-xs font-semibold transition-all duration-150',
+                          photoEngine === 'legacy4'
+                            ? 'bg-primary text-on-primary shadow-sm'
+                            : 'bg-surface-low text-on-surface-variant hover:bg-surface-container',
+                        )}
+                      >
+                        ⚡ Legacy-4
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEngineModalOpen(true)}
+                        title="ดูข้อดีและข้อจำกัดของแต่ละโมเดล"
+                        className="inline-flex size-6 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container cursor-pointer"
+                      >
+                        <Icon name="info" size={14} />
+                      </button>
+                    </div>
+                  </div>
+
                   <input
                     ref={fileInput}
                     type="file"
@@ -468,6 +573,36 @@ export function SweetnessScanner() {
                     >
                       <Icon name="map" size={16} />
                       ดูแปลงของฉัน
+                    </Button>
+                  </div>
+                </>
+              ) : compareData ? (
+                <>
+                  <VisionCompareCard compareResult={compareData} />
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-surface-container-high/60 pt-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-1 justify-center text-xs"
+                      onClick={() =>
+                        navigate(
+                          `/chat?q=${encodeURIComponent(
+                            `ผลวิเคราะห์ภาพ ${cultivar.name} จาก ${photoEngine === 'claude' ? 'Claude Vision' : 'Wide-9'}: ตรวจพบอาการ ${compareData.prediction?.class_name ?? compareData.prediction?.top_class ?? ''} ขอคำปรึกษาเพิ่มเติมครับ`,
+                          )}`,
+                        )
+                      }
+                    >
+                      <Icon name="chat" size={16} />
+                      ปรึกษา AI ในแชท
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-1 justify-center text-xs"
+                      onClick={() => navigate('/disease-scan')}
+                    >
+                      <Icon name="center_focus_strong" size={16} />
+                      สแกนโรคโหมดเต็ม
                     </Button>
                   </div>
                 </>
@@ -711,6 +846,14 @@ export function SweetnessScanner() {
             </ol>
           )}
         </Modal>
+
+        <VisionEngineModal
+          isOpen={engineModalOpen}
+          onClose={() => setEngineModalOpen(false)}
+          engines={engineList}
+          selectedEngine={photoEngine}
+          onSelectEngine={(next) => setPhotoEngine(next)}
+        />
       </PageContainer>
     </AppShell>
   );

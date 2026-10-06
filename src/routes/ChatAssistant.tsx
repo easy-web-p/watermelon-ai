@@ -7,9 +7,21 @@ import { Segmented } from '../components/ui/Segmented';
 import { useToast } from '../components/ui/Toast';
 import { KnockResultCard } from '../components/domain/KnockResultCard';
 import { DiseaseResultCard } from '../components/domain/DiseaseResultCard';
+import { VisionCompareCard } from '../components/domain/VisionCompareCard';
+import { VisionEngineModal } from '../components/domain/VisionEngineModal';
 import { cn } from '../lib/cn';
 import { useRouter } from '../lib/router';
-import { ApiError, NetworkError, api, type ChatMode, type DiseaseDetection, type KnockAnalysis } from '../lib/api';
+import {
+  ApiError,
+  NetworkError,
+  api,
+  type ChatMode,
+  type DiseaseDetection,
+  type KnockAnalysis,
+  type VisionCompareResponse,
+} from '../lib/api';
+import type { VisionEngineInfo, VisionEngineName } from '../lib/visionEngines';
+import { FALLBACK_ENGINES } from './DiseaseScan';
 import {
   getLocalMessages,
   rememberConversationId,
@@ -31,6 +43,7 @@ type Message = {
   audioUrl?: string;
   knock?: KnockAnalysis;
   disease?: DiseaseDetection;
+  visionCompare?: VisionCompareResponse;
   failed?: boolean;
 };
 
@@ -210,6 +223,8 @@ function MessageRow({
 
           {message.disease ? (
             <DiseaseResultCard result={message.disease} className={message.text ? 'mt-4' : undefined} />
+          ) : message.visionCompare ? (
+            <VisionCompareCard compareResult={message.visionCompare} className={message.text ? 'mt-4' : undefined} />
           ) : message.knock ? (
             <KnockResultCard result={message.knock} />
           ) : null}
@@ -268,6 +283,9 @@ export function ChatAssistant() {
   const [messages, setMessages] = useState<Message[]>([GREETING]);
   const [draft, setDraft] = useState('');
   const [mode, setMode] = useState<ChatMode>('general');
+  const [visionEngine, setVisionEngine] = useState<VisionEngineName>('claude');
+  const [engineList, setEngineList] = useState<readonly VisionEngineInfo[]>(FALLBACK_ENGINES);
+  const [showEngineModal, setShowEngineModal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pendingImage, setPendingImage] = useState<{ dataUrl: string; name: string } | null>(null);
 
@@ -295,6 +313,9 @@ export function ChatAssistant() {
   useEffect(() => {
     if (!user) return;
     api.acousticModelStatus().then((st) => setAcousticOnline(st.online)).catch(() => setAcousticOnline(false));
+    api.visionEngines().then((res) => {
+      if (res.engines?.length) setEngineList(res.engines);
+    }).catch(() => undefined);
   }, [user]);
 
   const threadMatch = path.match(/^\/chat\/([^/?#]+)/);
@@ -430,20 +451,63 @@ export function ChatAssistant() {
 
       try {
         if (photo) {
-          // Vision path: the chat endpoint runs the model and persists both
-          // turns, so the diagnosis survives a reload.
-          const reply = await api.sendMessage(conversationId.current, {
-            content: trimmed,
-            mode: 'disease-diagnosis',
-            imageBase64: photo.dataUrl,
-            allow_training: allowTraining,
-          });
+          // Vision path: use the selected engine (Claude Vision, Wide-9, or Legacy-4)
+          let compareData: VisionCompareResponse | undefined;
+          let diseaseData: DiseaseDetection | undefined;
+          let replyContent = '';
+
+          if (visionEngine === 'claude' || visionEngine === 'wide9') {
+            try {
+              compareData = await api.visionCompare({
+                imageBase64: photo.dataUrl,
+                engine: visionEngine,
+                notes: trimmed || 'วิเคราะห์โรคใบแตงโมผ่านแชท',
+              });
+
+              const engLabel =
+                visionEngine === 'claude'
+                  ? '✨ Claude Vision (โมเดลวิเคราะห์เชิงลึกระดับสูง)'
+                  : '🔬 Wide-9 (โมเดลมุมกว้าง 9 คลาส)';
+              const pred = compareData.prediction;
+              const predClass =
+                pred?.predicted_class || pred?.class_id || 'วิเคราะห์อาการผิดปกติ';
+              const conf = pred?.confidence_percentage
+                ? `${pred.confidence_percentage}%`
+                : pred?.confidence
+                  ? `${Math.round(pred.confidence * 100)}%`
+                  : '';
+              const explanation = pred?.explanation
+                ? `\n\n📋 **ข้อสังเกตและเหตุผลประกอบ:**\n${pred.explanation}`
+                : '';
+
+              replyContent =
+                `น้องแตงโม AI ได้วิเคราะห์ภาพด้วยเครื่องยนต์ **${engLabel}** เรียบร้อยแล้วครับ 🍉\n\n` +
+                `• **ข้อสังเกตอาการ:** **${predClass}** ${conf ? `(คะแนนความมั่นใจ ${conf})` : ''}` +
+                explanation +
+                `\n\n🌱 *ดูรายละเอียดผลวิเคราะห์และข้อแนะนำการจัดการในบัตรสังเกตอาการด้านล่างนี้ได้เลยครับ*`;
+            } catch (cmpErr) {
+              console.warn('[chat] compare engine call failed, falling back to standard', cmpErr);
+            }
+          }
+
+          if (!compareData) {
+            const reply = await api.sendMessage(conversationId.current, {
+              content: trimmed,
+              mode: 'disease-diagnosis',
+              imageBase64: photo.dataUrl,
+              allow_training: allowTraining,
+            });
+            replyContent = reply.content;
+            diseaseData = reply.diseaseDetection;
+          }
+
           append({
-            id: reply.id,
+            id: newId('a'),
             role: 'assistant',
             time: nowLabel(),
-            text: reply.content,
-            disease: reply.diseaseDetection,
+            text: replyContent,
+            disease: diseaseData,
+            visionCompare: compareData,
           });
         } else {
           const reply = await api.sendMessage(conversationId.current, {
@@ -506,7 +570,7 @@ export function ChatAssistant() {
         setBusy(false);
       }
     },
-    [append, mode, allowTraining, toast],
+    [append, mode, visionEngine, allowTraining, toast],
   );
 
   useEffect(() => {
@@ -777,6 +841,63 @@ export function ChatAssistant() {
               </div>
             ) : null}
 
+            {/* Multi-Vision Engine Selector */}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-surface-lowest/95 p-1.5 px-3 shadow-sm border border-outline-variant/30 backdrop-blur-md">
+              <div className="flex items-center gap-1.5 text-caption font-bold text-primary">
+                <Icon name="biotech" size={16} />
+                <span>เครื่องยนต์ AI ตรวจโรค:</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setVisionEngine('claude')}
+                  className={cn(
+                    'cursor-pointer rounded-full px-2.5 py-1 text-caption font-bold transition-all',
+                    visionEngine === 'claude'
+                      ? 'bg-primary text-on-primary shadow-xs'
+                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high',
+                  )}
+                  title="Claude Vision: โมเดลวิเคราะห์เชิงลึกระดับสูง คิดรอบด้านนอกกรอบคลาส"
+                >
+                  ✨ Claude Vision (เทพสุด)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisionEngine('wide9')}
+                  className={cn(
+                    'cursor-pointer rounded-full px-2.5 py-1 text-caption font-bold transition-all',
+                    visionEngine === 'wide9'
+                      ? 'bg-secondary text-on-secondary shadow-xs'
+                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high',
+                  )}
+                  title="Wide-9: โมเดล 9 คลาส รวมราแป้ง"
+                >
+                  🔬 Wide-9 (9 คลาส)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisionEngine('legacy4')}
+                  className={cn(
+                    'cursor-pointer rounded-full px-2.5 py-1 text-caption font-bold transition-all',
+                    visionEngine === 'legacy4'
+                      ? 'bg-outline text-surface-lowest shadow-xs'
+                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high',
+                  )}
+                  title="Legacy-4: โมเดล 4 คลาสหลัก ปรับเทียบความมั่นใจแล้ว"
+                >
+                  Legacy-4
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEngineModal(true)}
+                  className="rounded-full p-1 text-on-surface-variant hover:text-primary cursor-pointer transition-colors"
+                  title="ดูรายละเอียดจุดเด่นและข้อจำกัดของเครื่องยนต์แต่ละตัว"
+                >
+                  <Icon name="help" size={16} />
+                </button>
+              </div>
+            </div>
+
             <div className="flex flex-col items-stretch justify-between gap-2 rounded-lg bg-surface-lowest p-2 pl-4 shadow-dock sm:flex-row sm:items-center sm:rounded-full sm:pl-5">
               <Segmented
                 options={MODES}
@@ -885,6 +1006,20 @@ export function ChatAssistant() {
           </form>
         </div>
       </div>
+
+      <VisionEngineModal
+        isOpen={showEngineModal}
+        onClose={() => setShowEngineModal(false)}
+        engines={engineList}
+        selectedEngine={visionEngine}
+        onSelectEngine={(eng) => {
+          setVisionEngine(eng);
+          setShowEngineModal(false);
+          toast.success(
+            `เปลี่ยนเครื่องยนต์ AI เป็น ${eng === 'claude' ? 'Claude Vision (เทพสุด)' : eng === 'wide9' ? 'Wide-9' : 'Legacy-4'} แล้ว`,
+          );
+        }}
+      />
     </AppShell>
   );
 }

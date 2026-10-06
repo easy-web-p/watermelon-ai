@@ -3,13 +3,16 @@ import { Icon } from '../ui/Icon';
 import type { VisionCompareResponse } from '../../lib/api';
 import { resolveDiseaseId, type VisionEngineName } from '../../lib/visionEngines';
 import { DISEASES } from '../../data/diseases';
+import { cn } from '../../lib/cn';
 
 export function VisionCompareCard({
   compareResult,
   onClose,
+  className,
 }: {
   compareResult: VisionCompareResponse;
   onClose?: () => void;
+  className?: string;
 }) {
   const { engine, prediction, disclaimer } = compareResult;
 
@@ -39,7 +42,7 @@ export function VisionCompareCard({
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-secondary/30 bg-surface-lowest p-5 shadow-sm">
+    <div className={cn('flex flex-col gap-3 rounded-xl border border-secondary/30 bg-surface-lowest p-5 shadow-sm', className)}>
       {/* Header */}
       <div className="flex items-start justify-between gap-3 border-b border-outline-variant/20 pb-3">
         <div>
