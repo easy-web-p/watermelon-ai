@@ -13,8 +13,16 @@ import { useDisplayUser } from '../../store/auth';
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { path } = useRouter();
+  const { path, navigate } = useRouter();
   const user = useDisplayUser();
+
+  function handleBack() {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate('/');
+    }
+  }
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -63,7 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="flex min-h-screen flex-col lg:pl-80">
         <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-3 border-b border-outline-variant/30 bg-surface/85 px-4 backdrop-blur-xl sm:px-6">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
@@ -71,6 +79,17 @@ export function AppShell({ children }: { children: ReactNode }) {
               className="flex size-10 cursor-pointer items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container lg:hidden"
             >
               <Icon name="menu" size={22} />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="ย้อนกลับ"
+              title="ย้อนกลับ"
+              className="flex items-center gap-1 rounded-full bg-surface-container-low px-2.5 py-1.5 text-label-md font-semibold text-on-surface-variant transition-all duration-150 hover:bg-surface-container hover:text-on-surface active:scale-95 cursor-pointer shrink-0"
+            >
+              <Icon name="arrow_back" size={18} />
+              <span className="hidden sm:inline">ย้อนกลับ</span>
             </button>
 
             <Link to="/chat" className="lg:hidden" aria-label="Watermelon AI">
@@ -131,22 +150,52 @@ export function PageContainer({ children, className }: { children: ReactNode; cl
   return <div className={cn('mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8', className)}>{children}</div>;
 }
 
-/** Page title block: eyebrow chip, heading, supporting line, actions. */
+/** Page title block: back button, eyebrow chip, heading, supporting line, actions. */
 export function PageHeading({
   eyebrow,
   title,
   description,
   actions,
+  hideBack = false,
+  backUrl,
 }: {
   eyebrow?: ReactNode;
   title: string;
   description?: string;
   actions?: ReactNode;
+  hideBack?: boolean;
+  backUrl?: string;
 }) {
+  const { navigate } = useRouter();
+
+  function handleBack() {
+    if (backUrl) {
+      navigate(backUrl);
+    } else if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate('/');
+    }
+  }
+
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0 max-w-[70ch]">
-        {eyebrow ? <div className="mb-2 flex flex-wrap items-center gap-2">{eyebrow}</div> : null}
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          {!hideBack && (
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="ย้อนกลับ"
+              title="ย้อนกลับ"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-surface-container-low px-2.5 py-1 text-label-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
+            >
+              <Icon name="arrow_back" size={16} />
+              <span>ย้อนกลับ</span>
+            </button>
+          )}
+          {eyebrow}
+        </div>
         <h1 className="text-headline-lg font-bold text-on-surface">{title}</h1>
         {description ? <p className="mt-1.5 text-body-lg text-on-surface-variant">{description}</p> : null}
       </div>

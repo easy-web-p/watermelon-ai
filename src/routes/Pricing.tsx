@@ -25,10 +25,27 @@ export function Pricing() {
       <section className="relative overflow-hidden bg-gradient-to-b from-surface-lowest via-surface-low to-surface py-14">
         <div className="pointer-events-none absolute -top-24 left-1/2 size-96 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-12">
-          <Badge tone="secondary" className="mx-auto">
-            <Icon name="workspace_premium" size={14} />
-            แพ็กเกจและราคา
-          </Badge>
+          <div className="mx-auto mb-2 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  navigate('/');
+                }
+              }}
+              aria-label="ย้อนกลับ"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-surface-lowest px-2.5 py-1 text-label-sm font-semibold text-on-surface-variant shadow-xs transition-colors hover:bg-surface-container"
+            >
+              <Icon name="arrow_back" size={16} />
+              <span>ย้อนกลับ</span>
+            </button>
+            <Badge tone="secondary">
+              <Icon name="workspace_premium" size={14} />
+              แพ็กเกจและราคา
+            </Badge>
+          </div>
           <h1 className="mx-auto mt-3 max-w-3xl text-headline-lg text-on-surface lg:text-display-lg">
             เลือกแพ็กเกจที่เหมาะกับขนาดแปลงของคุณ
           </h1>

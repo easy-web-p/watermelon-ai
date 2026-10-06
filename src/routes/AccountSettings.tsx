@@ -136,7 +136,7 @@ export function AccountSettings() {
   function handleSignOut() {
     signOut();
     toast.success('ออกจากระบบเรียบร้อยแล้ว');
-    navigate('/signin');
+    navigate('/');
   }
 
   return (

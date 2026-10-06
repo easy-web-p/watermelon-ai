@@ -83,9 +83,29 @@ function RichText({ text }: { text: string }) {
 }
 
 function AssistantBar({ onTool }: { onTool: (tool: 'photo' | 'disease' | 'chemicals') => void }) {
+  const { navigate } = useRouter();
+
+  function handleBack() {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate('/');
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/30 bg-surface-lowest/80 px-4 py-3 backdrop-blur-md sm:px-6">
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <button
+          type="button"
+          onClick={handleBack}
+          aria-label="ย้อนกลับ"
+          title="ย้อนกลับ"
+          className="flex items-center gap-1 rounded-full bg-surface-container-low px-2.5 py-1.5 text-label-md font-semibold text-on-surface-variant transition-all duration-150 hover:bg-surface-container hover:text-on-surface active:scale-95 cursor-pointer shrink-0"
+        >
+          <Icon name="arrow_back" size={18} />
+          <span className="hidden sm:inline">ย้อนกลับ</span>
+        </button>
         <span className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10">
           <MelonAvatar size={28} />
           <span className="absolute right-0 bottom-0 size-3 animate-pulse rounded-full bg-secondary ring-2 ring-surface-lowest" />
@@ -261,18 +281,28 @@ export function ChatAssistant() {
   const recorder = useKnockRecorder();
   const { query, path, navigate } = useRouter();
   const { initial } = useDisplayUser();
+  const user = useAuth((state) => state.user);
   const allowTraining = useAuth((state) => state.consent.improveModel);
   const [acousticOnline, setAcousticOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (!user) {
+      toast.info('กรุณาเข้าสู่ระบบก่อนใช้งานแชทกับน้องแตงโม AI');
+      navigate('/signin?redirect=/chat', { replace: true });
+    }
+  }, [user, navigate, toast]);
+
+  useEffect(() => {
+    if (!user) return;
     api.acousticModelStatus().then((st) => setAcousticOnline(st.online)).catch(() => setAcousticOnline(false));
-  }, []);
+  }, [user]);
 
   const threadMatch = path.match(/^\/chat\/([^/?#]+)/);
   const thread = query.get('thread') || (threadMatch ? decodeURIComponent(threadMatch[1]) : null);
   const [restoring, setRestoring] = useState(true);
 
   useEffect(() => {
+    if (!user) return;
     const currentThread = thread || restoreConversationId(() => newId('conv'));
     conversationId.current = currentThread;
     rememberConversationId(currentThread);
@@ -575,6 +605,48 @@ export function ChatAssistant() {
   }, [recorder.error, toast]);
 
   const recording = recorder.state === 'recording';
+
+  if (!user) {
+    return (
+      <AppShell>
+        <div className="flex min-h-[70vh] flex-col items-center justify-center p-6 text-center">
+          <div className="mb-4 flex size-20 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Icon name="lock" size={40} />
+          </div>
+          <h2 className="mb-2 text-headline-sm font-bold text-on-surface">
+            กรุณาเข้าสู่ระบบก่อนใช้งานแชท
+          </h2>
+          <p className="mb-6 max-w-md text-body-md text-on-surface-variant">
+            ฟีเจอร์แชทกับน้องแตงโม AI สงวนไว้สำหรับสมาชิกที่เข้าสู่ระบบ เพื่อบันทึกประวัติการพูดคุยและวิเคราะห์แปลงเพาะปลูกของคุณ
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/signin?redirect=/chat')}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-label-lg font-semibold text-on-primary shadow-sm transition-transform active:scale-95"
+            >
+              <Icon name="login" size={18} />
+              เข้าสู่ระบบ / ลงทะเบียน
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  navigate('/');
+                }
+              }}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-outline-variant/50 bg-surface-lowest px-6 py-2.5 text-label-lg font-semibold text-on-surface transition-all hover:bg-surface-container active:scale-95"
+            >
+              <Icon name="arrow_back" size={18} />
+              กลับสู่หน้าแรก
+            </button>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>

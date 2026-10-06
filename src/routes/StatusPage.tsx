@@ -85,6 +85,20 @@ export function StatusPage({ code }: { code: string }) {
                 {data.secondary.label}
               </Link>
             ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                if (window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  window.location.href = '/';
+                }
+              }}
+              className="inline-flex h-12 items-center gap-2 rounded-full border border-outline-variant/60 bg-surface-lowest px-6 text-label-lg font-semibold text-on-surface transition-all duration-150 ease-tactile hover:bg-surface-container active:scale-[0.96] cursor-pointer"
+            >
+              <Icon name="arrow_back" size={18} />
+              ย้อนกลับ
+            </button>
           </div>
         </Card>
 

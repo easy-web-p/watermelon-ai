@@ -5,7 +5,7 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
 import { Meter } from '../components/ui/Meter';
-import { Link } from '../lib/router';
+import { Link, useRouter } from '../lib/router';
 import { cn } from '../lib/cn';
 import { DISEASES, SEVERITY_LABEL, SEVERITY_TONE, type Disease } from '../data/diseases';
 import { modelCoverage } from '../lib/diseaseModel';
@@ -130,6 +130,7 @@ function DiseaseCard({ disease, expanded, onToggle }: { disease: Disease; expand
 }
 
 export function SupportedDiseases() {
+  const { navigate } = useRouter();
   const [category, setCategory] = useState<Category>('ทั้งหมด');
   const [query, setQuery] = useState('');
   const [openId, setOpenId] = useState<string | null>(DISEASES[0].id);
@@ -154,10 +155,27 @@ export function SupportedDiseases() {
         <div className="pointer-events-none absolute -top-24 -left-20 size-96 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-12">
           <div className="max-w-3xl">
-            <Badge tone="secondary">
-              <Icon name="coronavirus" size={14} />
-              คลังความรู้โรคแตงโม
-            </Badge>
+            <div className="mb-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.history.length > 1) {
+                    window.history.back();
+                  } else {
+                    navigate('/');
+                  }
+                }}
+                aria-label="ย้อนกลับ"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-surface-lowest px-2.5 py-1 text-label-sm font-semibold text-on-surface-variant shadow-xs transition-colors hover:bg-surface-container"
+              >
+                <Icon name="arrow_back" size={16} />
+                <span>ย้อนกลับ</span>
+              </button>
+              <Badge tone="secondary">
+                <Icon name="coronavirus" size={14} />
+                คลังความรู้โรคแตงโม
+              </Badge>
+            </div>
             <h1 className="mt-3 text-headline-lg text-on-surface lg:text-display-lg">
               คลังความรู้โรคแตงโมและขอบเขตการตรวจของ AI
             </h1>

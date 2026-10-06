@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Logo, LogoMark } from '../brand/Logo';
 import { Icon } from '../ui/Icon';
 import { Button } from '../ui/Button';
+import { useToast } from '../ui/Toast';
 import { Link, useRouter } from '../../lib/router';
 import { cn } from '../../lib/cn';
 import { MARKETING_NAV } from '../../data/nav';
@@ -12,16 +13,46 @@ import { useAuth } from '../../store/auth';
 export function MarketingShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const { path, navigate } = useRouter();
+  const toast = useToast();
   const user = useAuth((state) => state.user);
   const signOut = useAuth((state) => state.signOut);
+
+  function handleSignOut() {
+    signOut();
+    toast.success('ออกจากระบบเรียบร้อยแล้ว');
+    navigate('/');
+    setOpen(false);
+  }
+
+  function handleBack() {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate('/');
+    }
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-surface">
       <header className="sticky top-0 z-50 bg-surface-lowest/85 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-          <Link to="/" aria-label="Watermelon AI หน้าแรก" className="shrink-0">
-            <Logo />
-          </Link>
+          <div className="flex items-center gap-2 shrink-0">
+            {path !== '/' && (
+              <button
+                type="button"
+                onClick={handleBack}
+                aria-label="ย้อนกลับ"
+                title="ย้อนกลับ"
+                className="flex items-center gap-1 rounded-full bg-surface-container-low px-3 py-1.5 text-label-md font-semibold text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all duration-150 active:scale-95 cursor-pointer"
+              >
+                <Icon name="arrow_back" size={18} />
+                <span className="hidden sm:inline">ย้อนกลับ</span>
+              </button>
+            )}
+            <Link to="/" aria-label="Watermelon AI หน้าแรก" className="shrink-0">
+              <Logo />
+            </Link>
+          </div>
 
           <nav
             className="hidden items-center rounded-full bg-surface-lowest p-1 shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-outline-variant/20 lg:flex shrink-0 gap-0.5"
@@ -59,7 +90,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
                   </span>
                   <span className="hidden sm:inline max-w-[120px] truncate">{user.name}</span>
                 </Link>
-                <Button size="sm" variant="ghost" onClick={() => signOut()}>
+                <Button size="sm" variant="ghost" onClick={handleSignOut}>
                   ออกจากระบบ
                 </Button>
               </div>
@@ -91,6 +122,21 @@ export function MarketingShell({ children }: { children: ReactNode }) {
         {open ? (
           <nav className="border-t border-outline-variant/30 bg-surface-lowest px-4 py-3 lg:hidden" aria-label="เมนูมือถือ">
             <ul className="flex flex-col gap-1">
+              {path !== '/' && (
+                <li className="mb-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      handleBack();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-full px-4 py-2.5 text-label-lg font-semibold text-on-surface-variant hover:bg-surface-low cursor-pointer"
+                  >
+                    <Icon name="arrow_back" size={18} />
+                    <span>ย้อนกลับ</span>
+                  </button>
+                </li>
+              )}
               {MARKETING_NAV.map((item) => (
                 <li key={item.path}>
                   <Link
@@ -114,10 +160,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
                     variant="ghost"
                     size="sm"
                     className="flex-1"
-                    onClick={() => {
-                      signOut();
-                      setOpen(false);
-                    }}
+                    onClick={handleSignOut}
                   >
                     ออกจากระบบ ({user.name})
                   </Button>
@@ -264,13 +307,35 @@ export function AuthShell({
   children: ReactNode;
   aside?: ReactNode;
 }) {
+  const { navigate } = useRouter();
+
+  function handleBack() {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate('/');
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-surface font-body-md text-on-surface antialiased">
       <header className="sticky top-0 z-50 w-full border-b border-outline-variant/20 bg-surface/85 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.03)]">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to="/" aria-label="Watermelon AI หน้าแรก" className="flex items-center gap-2">
-            <Logo />
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="ย้อนกลับ"
+              title="ย้อนกลับ"
+              className="flex items-center gap-1 rounded-full bg-surface-container-low px-3 py-1.5 text-label-md font-semibold text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all duration-150 active:scale-95 cursor-pointer"
+            >
+              <Icon name="arrow_back" size={18} />
+              <span className="hidden sm:inline">ย้อนกลับ</span>
+            </button>
+            <Link to="/" aria-label="Watermelon AI หน้าแรก" className="flex items-center gap-2">
+              <Logo />
+            </Link>
+          </div>
           <div className="flex items-center gap-3">
             <Link
               to="/support"

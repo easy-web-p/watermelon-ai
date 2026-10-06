@@ -151,7 +151,7 @@ export function AuthAside() {
 }
 
 export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'register' }) {
-  const { path, navigate } = useRouter();
+  const { path, query, navigate } = useRouter();
 
   // Determine active tab from URL or initialMode
   const [mode, setMode] = useState<'signin' | 'register'>(() => {
@@ -203,9 +203,12 @@ export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'r
   const socialLogin = useAuth((state) => state.socialLogin);
   const busy = useAuth((state) => state.status === 'loading');
 
+  const redirectTarget = query.get('redirect') || '/chat';
+
   function handleSwitchTab(newMode: 'signin' | 'register') {
     setMode(newMode);
-    navigate(newMode === 'register' ? '/register' : '/signin', { replace: true });
+    const redirectParam = query.get('redirect') ? `?redirect=${encodeURIComponent(query.get('redirect')!)}` : '';
+    navigate((newMode === 'register' ? '/register' : '/signin') + redirectParam, { replace: true });
   }
 
   async function handleSignInSubmit(event: React.FormEvent) {
@@ -218,7 +221,7 @@ export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'r
     try {
       const user = await loginWithPassword(identifier, signInPassword);
       toast.success(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับ ${user.name}`);
-      navigate('/chat');
+      navigate(redirectTarget);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
     }
@@ -253,7 +256,7 @@ export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'r
         plotSize,
       });
       toast.success(`สมัครสมาชิกสำเร็จ! ยินดีต้อนรับคุณ ${user.name}`);
-      navigate('/chat');
+      navigate(redirectTarget);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'สมัครสมาชิกไม่สำเร็จ');
     }
@@ -264,7 +267,7 @@ export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'r
       try {
         const user = await socialLogin('google');
         toast.success(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับ ${user.name}`);
-        navigate('/chat');
+        navigate(redirectTarget);
       } catch (error: any) {
         if (error?.message === 'ยกเลิกการเข้าสู่ระบบ') return;
         setShowGoogleModal(true);
@@ -275,7 +278,7 @@ export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'r
     try {
       const user = await socialLogin('line');
       toast.success(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับ ${user.name}`);
-      navigate('/chat');
+      navigate(redirectTarget);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'เข้าสู่ระบบไม่สำเร็จ');
     }
@@ -286,7 +289,7 @@ export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'r
       const user = await socialLogin('google', details);
       setShowGoogleModal(false);
       toast.success(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับ ${user.name}`);
-      navigate('/chat');
+      navigate(redirectTarget);
     } catch {
       const fallbackUser = {
         id: `usr-google-${Date.now()}`,
@@ -304,7 +307,7 @@ export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'r
       });
       setShowGoogleModal(false);
       toast.success(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับ ${fallbackUser.name}`);
-      navigate('/chat');
+      navigate(redirectTarget);
     }
   }
 
