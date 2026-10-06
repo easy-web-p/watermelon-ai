@@ -89,7 +89,7 @@ export function SweetnessScanner() {
   const [knock, setKnock] = useState<KnockAnalysis | null>(null);
   const [disease, setDisease] = useState<DiseaseDetection | null>(null);
   const [compareData, setCompareData] = useState<VisionCompareResponse | null>(null);
-  const [photoEngine, setPhotoEngine] = useState<VisionEngineName>('claude');
+  const [photoEngine, setPhotoEngine] = useState<VisionEngineName>('wide9');
   const [engineList, setEngineList] = useState<readonly VisionEngineInfo[]>(FALLBACK_ENGINES);
   const [engineModalOpen, setEngineModalOpen] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
@@ -440,18 +440,6 @@ export function SweetnessScanner() {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setPhotoEngine('claude')}
-                        className={cn(
-                          'cursor-pointer rounded-full px-3 py-1 text-label-xs font-semibold transition-all duration-150',
-                          photoEngine === 'claude'
-                            ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-sm ring-1 ring-amber-400'
-                            : 'bg-surface-low text-on-surface-variant hover:bg-surface-container',
-                        )}
-                      >
-                        ✨ Claude Vision (เทพสุด)
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => setPhotoEngine('wide9')}
                         className={cn(
                           'cursor-pointer rounded-full px-3 py-1 text-label-xs font-semibold transition-all duration-150',
@@ -460,7 +448,7 @@ export function SweetnessScanner() {
                             : 'bg-surface-low text-on-surface-variant hover:bg-surface-container',
                         )}
                       >
-                        🔬 Wide-9
+                        🔬 Wide-9 (9 คลาส)
                       </button>
                       <button
                         type="button"

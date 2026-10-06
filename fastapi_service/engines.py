@@ -63,6 +63,16 @@ TIER_NOTE_TH: dict[str, str] = {
 FLIP_VIEWS = ("identity", "hflip", "vflip")
 
 
+class EngineUnavailable(RuntimeError):
+    """engine เรียกไม่ได้ด้วยเหตุที่ผู้ดูแลระบบต้องไปแก้ ไม่ใช่เหตุชั่วคราว
+
+    แยกจากความล้มเหลวทั่วไปเพราะสองอย่างนี้ต้องบอกผู้ใช้ต่างกัน เครือข่ายสะดุด
+    หรือโมเดลรับคำขอไม่ทันคือเหตุชั่วคราว บอกให้ลองใหม่ได้ แต่คีย์หมดอายุ
+    เครดิตหมด หรือชื่อโมเดลผิด จะล้มเหมือนเดิมทุกครั้งที่ลองใหม่ ถ้าตอบรวมกัน
+    เป็น "ลองใหม่ภายหลัง" เกษตรกรจะกดซ้ำไปเรื่อย ๆ โดยไม่มีใครรู้ว่าต้องไปเติมเงิน
+    """
+
+
 @dataclass
 class Engine:
     """เครื่องยนต์หนึ่งตัวที่พร้อมรับภาพ"""
@@ -81,6 +91,9 @@ class Engine:
     # engine ที่เป็นโมเดลจำแนกไม่ใช้บริบทนี้ เพราะคลาสถูกตรึงมาตั้งแต่ตอนเทรน
     predict: Callable[[Image.Image, str, dict[str, Any]], dict[str, Any]]
     needs_candidates: bool = False
+    # เรียกครั้งหนึ่งมีค่าใช้จ่ายกับผู้ให้บริการภายนอกหรือไม่
+    # ผู้เรียกต้องรู้ก่อนเลือก ไม่ใช่รู้ตอนได้ใบแจ้งหนี้
+    costs_money: bool = False
     class_tiers: dict[str, str] = field(default_factory=dict)
     metrics: dict[str, Any] = field(default_factory=dict)
 
@@ -98,6 +111,7 @@ class Engine:
             "good_for_th": self.good_for_th,
             "limits_th": self.limits_th,
             "calibrated": self.calibrated,
+            "costs_money": self.costs_money,
             "class_provenance": {
                 cls: {"tier": tier, "note_th": TIER_NOTE_TH.get(tier, tier)}
                 for cls, tier in sorted(self.class_tiers.items())
@@ -389,6 +403,49 @@ CLAUDE_SCHEMA: dict[str, Any] = {
 }
 
 
+def _env_flag(name: str) -> bool:
+    """อ่านตัวแปรสภาพแวดล้อมแบบเปิด/ปิด ค่าเริ่มต้นคือปิด
+
+    รับเฉพาะคำที่สื่อว่าเปิดอย่างชัดเจน ค่าที่กำกวมเช่น "maybe" หรือพิมพ์ผิดเป็น
+    "ture" จะถือว่าปิด เพราะทางที่ผิดพลาดน้อยกว่าคือไม่เกิดค่าใช้จ่าย
+    """
+    return (os.getenv(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _classify_claude_error(exc: Exception, model: str) -> Exception:
+    """แยกว่าความล้มเหลวนี้ลองใหม่แล้วหายได้ หรือต้องให้ผู้ดูแลระบบไปแก้ก่อน
+
+    รับเฉพาะ ``APIStatusError`` คือกรณีที่คำขอไปถึงเซิร์ฟเวอร์แล้วถูกปฏิเสธ
+    ส่วน ``APIConnectionError`` และ ``RateLimitError`` ไม่ผ่านทางนี้ จึงยังถูกมองว่า
+    เป็นเหตุชั่วคราวตามเดิม ซึ่งถูกต้อง — เครือข่ายกลับมาได้ โควตาต่อนาทีก็รีเซ็ตเอง
+
+    ข้อความที่คืนไม่มีคีย์ API อยู่ในนั้น SDK ไม่ใส่คีย์ลงใน error message
+    """
+    status = getattr(exc, "status_code", None)
+    raw = str(exc)
+
+    if status == 401:
+        return EngineUnavailable(
+            "ANTHROPIC_API_KEY ใช้ไม่ได้ (ถูกเพิกถอนหรือพิมพ์ผิด) "
+            "ต้องตั้งค่าคีย์ใหม่ที่ฝั่งเซิร์ฟเวอร์ก่อน การลองใหม่จะได้ผลเดิม"
+        )
+    if status == 403:
+        return EngineUnavailable(
+            "คีย์ที่ตั้งไว้ไม่มีสิทธิ์เรียกโมเดลนี้ ต้องแก้สิทธิ์ของคีย์ก่อน"
+        )
+    if status == 404:
+        return EngineUnavailable(
+            f"ไม่พบโมเดล '{model}' ตรวจค่า CLAUDE_VISION_MODEL ที่ตั้งไว้"
+        )
+    # 400 ครอบหลายเรื่อง เฉพาะเรื่องเครดิตเท่านั้นที่ลองใหม่แล้วไม่หาย
+    if status == 400 and "credit balance" in raw.lower():
+        return EngineUnavailable(
+            "เครดิตในบัญชี Anthropic ไม่พอสำหรับเรียกโมเดล ต้องเติมเครดิตก่อน "
+            "ระหว่างนี้ใช้ engine legacy4 หรือ wide9 ที่รันในเครื่องได้"
+        )
+    return exc
+
+
 def _build_claude() -> Engine | None:
     """เครื่องยนต์ที่ใช้โมเดลภาษาที่มองภาพได้ แทนโมเดลจำแนกที่เทรนเอง
 
@@ -399,6 +456,12 @@ def _build_claude() -> Engine | None:
     รายชื่อโรคที่เลือกได้ต้องมาจากผู้เรียก ไม่ได้ฝังไว้ที่นี่ เพื่อรักษาขอบเขตที่
     ``main.py`` ระบุไว้ว่าเซอร์วิสนี้ไม่รู้จักชื่อโรคภาษาไทยหรือข้อมูลเชิงเกษตร
     """
+    # การมีคีย์อยู่ใน .env ไม่ใช่การอนุญาตให้ใช้เงิน คีย์มักถูกใส่ไว้เพื่องานอื่น
+    # หรือใส่ไว้ล่วงหน้า ถ้าขึ้นทะเบียนอัตโนมัติ ผู้ใช้จะกดเลือกแล้วเกิดค่าใช้จ่าย
+    # โดยไม่มีใครตัดสินใจ จึงต้องเปิดด้วย VISION_ENABLE_CLAUDE อย่างจงใจ
+    if not _env_flag("VISION_ENABLE_CLAUDE"):
+        return None
+
     api_key = (os.getenv("ANTHROPIC_API_KEY") or "").strip()
     if not api_key:
         return None
@@ -473,8 +536,11 @@ def _build_claude() -> Engine | None:
 
         # ใช้ streaming แม้ไม่ได้แสดงผลทีละชิ้น เพราะคำขอที่ effort สูงกับ max_tokens 16000
         # อาจใช้เวลานานพอที่คำขอแบบรอทั้งก้อนจะชนกับ HTTP timeout
-        with client.messages.stream(**request) as stream:
-            message = stream.get_final_message()
+        try:
+            with client.messages.stream(**request) as stream:
+                message = stream.get_final_message()
+        except anthropic.APIStatusError as exc:
+            raise _classify_claude_error(exc, model) from exc
 
         if getattr(message, "stop_reason", "") == "refusal":
             details = getattr(message, "stop_details", None)
@@ -555,6 +621,7 @@ def _build_claude() -> Engine | None:
         calibrated=False,
         predict=predict,
         needs_candidates=True,
+        costs_money=True,
     )
 
 
@@ -590,8 +657,9 @@ def build_registry(
     if wide_path.is_file():
         registry["wide9"] = _build_wide9(wide_path)
 
-    # claude ปรากฏเฉพาะเมื่อมี ANTHROPIC_API_KEY และติดตั้ง SDK แล้ว
+    # claude ปรากฏเฉพาะเมื่อตั้ง VISION_ENABLE_CLAUDE=1 และมีคีย์กับ SDK ครบ
     # ไม่ใส่ไว้แบบ "มีแต่เรียกไม่ได้" เพราะผู้เรียกจะเลือกแล้วพังตอนใช้งานจริง
+    # และไม่ขึ้นทะเบียนเพียงเพราะเจอคีย์ เพราะ engine นี้เรียกแล้วเสียเงินจริง
     if claude := _build_claude():
         registry["claude"] = claude
 

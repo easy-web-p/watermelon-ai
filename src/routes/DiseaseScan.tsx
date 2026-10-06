@@ -24,6 +24,14 @@ import { cn } from '../lib/cn';
 import type { ResourceState } from '../types/resource';
 import type { VisionEngineInfo, VisionEngineName } from '../lib/visionEngines';
 
+/**
+ * รายการที่ใช้เมื่อเรียก `GET /engines` ไม่สำเร็จ
+ *
+ * มีแต่ engine ที่รันในเครื่องและไม่มีค่าใช้จ่าย โดยเจตนา — ตอนที่เรียกรายการจริง
+ * ไม่ได้ เราไม่รู้ว่าฝั่งเซอร์วิสเปิด engine ที่เสียเงินไว้หรือไม่ การโฆษณาไว้
+ * ล่วงหน้าจะทำให้ผู้ใช้กดเลือกแล้วเกิดค่าใช้จ่าย หรือได้ข้อผิดพลาดเปล่า ๆ
+ * ถ้าเซอร์วิสเปิดไว้จริง รายการจากเซอร์วิสจะมาแทนรายการนี้เองเมื่อเรียกสำเร็จ
+ */
 export const FALLBACK_ENGINES: VisionEngineInfo[] = [
   {
     name: 'legacy4',
@@ -37,6 +45,7 @@ export const FALLBACK_ENGINES: VisionEngineInfo[] = [
     limits_th: ['ตรวจได้เฉพาะ 4 คลาสหลัก อาการอื่นจะถูกเลือกตัวที่ใกล้ที่สุด'],
     calibrated: true,
     needs_candidates: false,
+    costs_money: false,
     class_provenance: {},
     metrics: {},
   },
@@ -52,21 +61,7 @@ export const FALLBACK_ENGINES: VisionEngineInfo[] = [
     limits_th: ['ยังไม่ได้ปรับเทียบความน่าจะเป็น (ตัวเลขเป็นคะแนน Softmax ดิบ)', 'บางคลาสเทรนจากภาพพืชชนิดอื่นที่อาการคล้ายกัน'],
     calibrated: false,
     needs_candidates: false,
-    class_provenance: {},
-    metrics: {},
-  },
-  {
-    name: 'claude',
-    title_th: 'Claude Vision (วิเคราะห์เชิงลึก)',
-    classes: [],
-    class_count: 0,
-    image_size: 1024,
-    model_version: 'claude-vision',
-    description_th: 'วิเคราะห์อาการเชิงเหตุผลแบบเปิด สามารถสังเกตอาการผิดปกตินอกเหนือจากคลาสที่เทรนไว้',
-    good_for_th: ['อ่านอาการผิดปกติที่ซับซ้อน หรือมีหลายอาการร่วมกัน', 'อธิบายลักษณะรอยโรคที่พบอย่างละเอียด'],
-    limits_th: ['ใช้เวลาประมวลผลนานกว่าโมเดลจำแนก', 'ไม่มีตัวเลขความแม่นยำบนชุดทดสอบรองรับ'],
-    calibrated: false,
-    needs_candidates: true,
+    costs_money: false,
     class_provenance: {},
     metrics: {},
   },
@@ -434,7 +429,7 @@ export function DiseaseScan() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setSelectedEngine('legacy4')}
@@ -447,7 +442,7 @@ export function DiseaseScan() {
                 >
                   <span className="text-label-md font-bold">Legacy 4</span>
                   <span className="text-[11px] leading-tight">โมเดลมาตรฐาน (4 คลาส)</span>
-                  <span className="mt-1 text-[10px] text-secondary font-semibold">✓ ปรับเทียบแล้ว</span>
+                  <span className="mt-1 text-[10px] text-secondary font-semibold">✓ ปรับเทียบแล้ว (ฟรี)</span>
                 </button>
 
                 <button
@@ -462,25 +457,7 @@ export function DiseaseScan() {
                 >
                   <span className="text-label-md font-bold">Wide-9</span>
                   <span className="text-[11px] leading-tight">9 คลาส (ตรวจราแป้ง)</span>
-                  <span className="mt-1 text-[10px] text-outline font-semibold">⚠️ คะแนนดิบ</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedEngine('claude')}
-                  className={cn(
-                    'relative flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer',
-                    selectedEngine === 'claude'
-                      ? 'border-primary bg-melon-tint text-primary shadow-xs ring-1 ring-primary'
-                      : 'border-outline-variant/30 bg-surface-low text-on-surface-variant hover:bg-surface-container',
-                  )}
-                >
-                  <span className="absolute -top-2 right-1 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-extrabold text-on-primary shadow-xs">
-                    ⚡ เทพสุด
-                  </span>
-                  <span className="text-label-md font-bold">Claude Vision</span>
-                  <span className="text-[11px] leading-tight">คิดวิเคราะห์เชิงลึก</span>
-                  <span className="mt-1 text-[10px] text-primary font-semibold">✨ ละเอียดสูงสุด</span>
+                  <span className="mt-1 text-[10px] text-outline font-semibold">⚡ กว้างขวาง (ฟรี)</span>
                 </button>
               </div>
 
@@ -488,7 +465,6 @@ export function DiseaseScan() {
                 <span>
                   {selectedEngine === 'legacy4' && '• แนะนำสำหรับการวินิจฉัยหลัก ออกใบสั่งยา และคำนวณระยะปลอดภัย PHI'}
                   {selectedEngine === 'wide9' && '• เหมาะสำหรับตรวจราแป้ง (Powdery Mildew) และโรคใบจุดเพิ่มเติม'}
-                  {selectedEngine === 'claude' && '• เหมาะสำหรับวิเคราะห์อาการซับซ้อน หรือรอยโรคที่ไม่ได้อยู่ใน 4 คลาสหลัก'}
                 </span>
                 {selectedEngine !== 'legacy4' && (
                   <Badge tone="neutral" className="text-[10px] py-0 shrink-0 ml-2">คะแนนดิบ</Badge>

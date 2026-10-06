@@ -283,7 +283,7 @@ export function ChatAssistant() {
   const [messages, setMessages] = useState<Message[]>([GREETING]);
   const [draft, setDraft] = useState('');
   const [mode, setMode] = useState<ChatMode>('general');
-  const [visionEngine, setVisionEngine] = useState<VisionEngineName>('claude');
+  const [visionEngine, setVisionEngine] = useState<VisionEngineName>('wide9');
   const [engineList, setEngineList] = useState<readonly VisionEngineInfo[]>(FALLBACK_ENGINES);
   const [showEngineModal, setShowEngineModal] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -868,19 +868,6 @@ export function ChatAssistant() {
               <div className="flex flex-wrap items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setVisionEngine('claude')}
-                  className={cn(
-                    'cursor-pointer rounded-full px-2.5 py-1 text-caption font-bold transition-all',
-                    visionEngine === 'claude'
-                      ? 'bg-primary text-on-primary shadow-xs'
-                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high',
-                  )}
-                  title="Claude Vision: โมเดลวิเคราะห์เชิงลึกระดับสูง คิดรอบด้านนอกกรอบคลาส"
-                >
-                  ✨ Claude Vision (เทพสุด)
-                </button>
-                <button
-                  type="button"
                   onClick={() => setVisionEngine('wide9')}
                   className={cn(
                     'cursor-pointer rounded-full px-2.5 py-1 text-caption font-bold transition-all',
@@ -888,7 +875,7 @@ export function ChatAssistant() {
                       ? 'bg-secondary text-on-secondary shadow-xs'
                       : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high',
                   )}
-                  title="Wide-9: โมเดล 9 คลาส รวมราแป้ง"
+                  title="Wide-9: โมเดล 9 คลาส รวมราแป้ง (ฟรี)"
                 >
                   🔬 Wide-9 (9 คลาส)
                 </button>

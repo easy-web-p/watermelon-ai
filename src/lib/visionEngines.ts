@@ -40,6 +40,8 @@ export type VisionEngineInfo = {
   limits_th: readonly string[];
   calibrated: boolean;
   needs_candidates: boolean;
+  /** เรียกครั้งหนึ่งมีค่าใช้จ่ายกับผู้ให้บริการภายนอกหรือไม่ */
+  costs_money: boolean;
   class_provenance: Record<string, { tier: string; note_th: string }>;
   metrics: Record<string, unknown>;
 };

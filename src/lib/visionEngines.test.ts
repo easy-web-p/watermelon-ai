@@ -71,6 +71,28 @@ describe('vision engine class mapping', () => {
   });
 });
 
+describe('รายการสำรองต้องไม่เสนอ engine ที่เสียเงิน', () => {
+  it('FALLBACK_ENGINES มีแต่ engine ที่ไม่มีค่าใช้จ่าย', async () => {
+    // รายการนี้ถูกใช้ตอนเรียก GET /engines ไม่สำเร็จ ซึ่งเป็นตอนที่เรา "ไม่รู้"
+    // ว่าฝั่งเซอร์วิสเปิด engine ที่เสียเงินไว้หรือไม่ การเดาว่าเปิดไว้แล้วเสนอ
+    // ให้ผู้ใช้กด ทำให้เกิดค่าใช้จ่ายโดยไม่มีใครตัดสินใจ หรือได้ error เปล่า ๆ
+    const { FALLBACK_ENGINES } = await import('../routes/DiseaseScan');
+
+    const paid = FALLBACK_ENGINES.filter((e) => e.costs_money);
+    expect(paid.map((e) => e.name), 'รายการสำรองเสนอ engine ที่เสียเงิน').toEqual([]);
+    expect(FALLBACK_ENGINES.length).toBeGreaterThan(0);
+  });
+
+  it('ทุกตัวในรายการสำรองระบุ costs_money ไว้ชัดเจน', async () => {
+    // undefined จะลอดการกรองด้านบนไปได้ เพราะ falsy เหมือน false
+    const { FALLBACK_ENGINES } = await import('../routes/DiseaseScan');
+
+    for (const engine of FALLBACK_ENGINES) {
+      expect(typeof engine.costs_money, `${engine.name} ไม่ได้ระบุ costs_money`).toBe('boolean');
+    }
+  });
+});
+
 describe('claude candidate list', () => {
   it('covers the whole catalogue', () => {
     expect(claudeCandidates()).toHaveLength(DISEASES.length);

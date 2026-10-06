@@ -25,7 +25,7 @@ Firebase Hosting (dist/ + CDN)
   │                                └──▶ Cloud Run: watermelon-vision
   │                                       ├── engine legacy4  4 คลาส ปรับเทียบแล้ว
   │                                       ├── engine wide9    9 คลาส
-  │                                       └── engine claude   โมเดลภาษาอ่านภาพ
+  │                                       └── engine claude   ปิดอยู่ (เรียกแล้วเสียเงิน)
   │
   └── /**      ──────────────▶  index.html (SPA)
 ```
@@ -63,7 +63,8 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))" \
 # Gemini สำหรับแชทใน server.ts
 printf '%s' "$GEMINI_API_KEY" | gcloud secrets create GEMINI_API_KEY --data-file=-
 
-# Claude สำหรับ engine วิเคราะห์ภาพ (ไม่บังคับ — ถ้าไม่ใส่ engine claude จะไม่ปรากฏ)
+# Claude สำหรับ engine วิเคราะห์ภาพ — ข้ามข้อนี้ได้ถ้าไม่ต้องการใช้ตัวที่เสียเงิน
+# engine claude ปิดอยู่ตามค่าเริ่มต้น ระบบตรวจโรคทำงานครบด้วยโมเดลในเครื่อง
 printf '%s' "$ANTHROPIC_API_KEY" | gcloud secrets create ANTHROPIC_API_KEY --data-file=-
 ```
 
@@ -81,9 +82,23 @@ gcloud run deploy watermelon-vision \
   --timeout 300 \
   --concurrency 4 \
   --min-instances 0 \
-  --set-env-vars VISION_ENGINE=legacy4,CLAUDE_VISION_MODEL=claude-opus-5-5 \
-  --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest
+  --set-env-vars VISION_ENGINE=legacy4
 ```
+
+คำสั่งนี้ **ไม่เปิด engine `claude`** ซึ่งเป็นตัวเดียวที่เรียกแล้วเสียเงิน
+เซอร์วิสจะขึ้นทะเบียนเฉพาะ `legacy4` กับ `wide9` ที่รันในเครื่อง ไม่มีค่าใช้จ่าย
+ต่อการเรียก และหน้าจอจะเห็นแค่สองตัวนี้เพราะรายการมาจาก `GET /engines` จริง
+
+ถ้าภายหลังต้องการเปิด ให้เติมเครดิตในบัญชี Anthropic ก่อน แล้วสั่งอัปเดตด้วย
+
+```bash
+gcloud run services update watermelon-vision --region asia-southeast1 \
+  --update-env-vars VISION_ENABLE_CLAUDE=1,CLAUDE_VISION_MODEL=claude-opus-5-5 \
+  --update-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest
+```
+
+ปิดคืนด้วย `--update-env-vars VISION_ENABLE_CLAUDE=0` การถอดคีย์ออกก็ปิดได้
+แต่สวิตช์ชัดเจนกว่าและไม่ต้องยุ่งกับความลับ
 
 ค่าที่เลือกและเหตุผล:
 
@@ -142,27 +157,21 @@ gcloud run services add-iam-policy-binding watermelon-vision \
 
 ## 4. ต่อ Hosting เข้ากับ Cloud Run
 
-หลังจากที่ deploy เซอร์วิส `watermelon-api` ขึ้น Cloud Run ในข้อ 3 เรียบร้อยแล้ว
-ให้เปิดใช้งาน rewrite ใน `firebase.json` โดยเพิ่ม block ต่อไปนี้ไว้หน้า `**`:
+`firebase.json` **มี rewrite นี้อยู่แล้ว** ไม่ต้องเพิ่มเอง:
 
 ```json
     "rewrites": [
-      {
-        "source": "/api/**",
-        "run": {
-          "serviceId": "watermelon-api",
-          "region": "asia-southeast1"
-        }
-      },
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
+      { "source": "/api/**", "run": { "serviceId": "watermelon-api", "region": "asia-southeast1" } },
+      { "source": "**", "destination": "/index.html" }
     ]
 ```
 
-*(หมายเหตุ: หากยังไม่ได้ deploy Cloud Run หรือยังไม่ได้เปิด Cloud Run Admin API ในโปรเจกต์ Google Cloud
-การใส่ rewrite ชี้ไปที่ Cloud Run จะทำให้ Firebase Hosting ปฏิเสธ deploy ด้วย HTTP 403)*
+ลำดับสำคัญ — `/api/**` ต้องมาก่อน `**` ถ้าสลับกัน ทุก path จะถูกจับโดย `**`
+แล้วส่งคืน `index.html` ซึ่งเป็นอาการเดิมที่ทำให้ `/api/v1/...` ตอบเป็น HTML
+
+> **ข้อควรระวัง:** rewrite ชี้ไปที่เซอร์วิส `watermelon-api` ซึ่งต้อง deploy ตามข้อ 3
+> ให้เสร็จก่อน ถ้ายังไม่มีเซอร์วิสนั้น หรือยังไม่ได้เปิด Cloud Run Admin API
+> Firebase Hosting จะปฏิเสธ deploy ด้วย HTTP 403 — ให้ทำข้อ 2 และ 3 ให้จบก่อนเสมอ
 
 จากนั้น deploy Hosting อีกครั้ง:
 
@@ -184,6 +193,45 @@ WebView ของ Capacitor มี origin เป็น `https://localhost` จ�
 ```bash
 VITE_API_BASE_URL=https://acoustic-fruit-ripeness.web.app npm run build
 npx cap sync
+```
+
+## engine ตัวไหนเสียเงิน
+
+| engine | ที่รัน | ค่าใช้จ่ายต่อการเรียก | เปิดอยู่ตามค่าเริ่มต้น |
+|---|---|---|---|
+| `legacy4` | ในเครื่อง/ใน container | ไม่มี | ใช่ (เป็นตัวเริ่มต้น) |
+| `wide9` | ในเครื่อง/ใน container | ไม่มี | ใช่ ถ้ามีไฟล์ `wide9.onnx` |
+| `claude` | API ภายนอก | **มี** คิดตามโทเคนและขนาดภาพ | **ไม่** ต้องตั้ง `VISION_ENABLE_CLAUDE=1` |
+
+`GET /engines` รายงาน `costs_money` รายตัว หน้าจอใช้ค่านี้ตัดสินใจว่าจะเสนอตัวไหน
+จึงไม่ต้องมีรายชื่อ engine ที่เสียเงินเขียนฝังไว้ที่ฝั่งหน้าเว็บ
+
+การตั้งคีย์ไว้ใน `.env` หรือใน Secret Manager **ไม่ทำให้ engine claude เปิดเอง**
+มีเทสต์คุมข้อนี้ไว้ที่ `fastapi_service/test_engines_optin.py`
+
+```bash
+cd fastapi_service && python -m pytest -q    # 12 เทสต์ ไม่เรียก API จริง
+```
+
+## อ่านรหัสสถานะเมื่อวิเคราะห์ภาพไม่สำเร็จ
+
+เซอร์วิสวิเคราะห์ภาพแยกความล้มเหลวสองกลุ่ม เพราะสองกลุ่มนี้ต้องทำต่างกัน
+
+| รหัส | ความหมาย | ต้องทำอะไร |
+|---|---|---|
+| 422 | ภาพหรือคำขอไม่ถูกต้อง เช่นไฟล์เสีย หรือชื่อ engine ที่ไม่มีในทะเบียน | ผู้ใช้ถ่ายใหม่ หรือผู้เรียกแก้คำขอ |
+| 502 | เหตุชั่วคราว เครือข่ายสะดุด โควตาต่อนาทีเต็ม ต้นทางรับไม่ทัน | ลองใหม่ได้ มีโอกาสสำเร็จ |
+| 503 | เหตุที่ต้องแก้ค่าที่ตั้งไว้ก่อน คีย์ใช้ไม่ได้ เครดิตหมด ชื่อโมเดลผิด | **ลองใหม่ไม่ช่วย** ต้องไปแก้ที่ผู้ดูแลระบบ |
+
+`engine claude` ต้องมีเครดิตในบัญชี Anthropic ด้วย ไม่ใช่มีแค่คีย์ ถ้าคีย์ถูกต้อง
+แต่เครดิตหมด เซอร์วิสจะตอบ 503 พร้อมบอกว่าให้ใช้ `legacy4` หรือ `wide9`
+ที่รันในเครื่องแทนได้ ไม่ใช่ตอบ 502 ซึ่งจะทำให้หน้าจอชวนผู้ใช้กดซ้ำไปเรื่อย ๆ
+
+การจำแนกนี้มีเทสต์คุมที่ `fastapi_service/test_engines_errors.py` (ไม่เรียก API จริง
+จึงรันได้ตอนไม่มีคีย์และไม่มีค่าใช้จ่าย)
+
+```bash
+cd fastapi_service && python -m pytest test_engines_errors.py -q
 ```
 
 ## สิ่งที่ยังค้าง

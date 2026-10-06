@@ -53,11 +53,13 @@ const AiEvaluation = lazy(() =>
   import('./routes/AiEvaluation').then((m) => ({ default: m.AiEvaluation })),
 );
 
+const ScannerBlocked = () => <StatusPage code="403" />;
+
 /** Static routes. The dynamic `/status/:code` is matched separately. */
 const ROUTES: Record<string, ComponentType> = {
   '/': Landing,
   '/chat': ChatAssistant,
-  '/scanner': SweetnessScanner,
+  '/scanner': ScannerBlocked,
   '/cultivation': CultivationGuide,
   '/market': MarketPrices,
   '/fertilizer': FertilizerDirectory,

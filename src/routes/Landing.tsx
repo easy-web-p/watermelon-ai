@@ -76,7 +76,7 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'done'>('done');
   const [customImage, setCustomImage] = useState<string | null>(null);
   const [customDiagnosis, setCustomDiagnosis] = useState<DiseaseDetection | null>(null);
-  const [demoEngine, setDemoEngine] = useState<VisionEngineName>('claude');
+  const [demoEngine, setDemoEngine] = useState<VisionEngineName>('wide9');
   const [compareData, setCompareData] = useState<VisionCompareResponse | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timers = useRef<number[]>([]);
@@ -295,19 +295,6 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
               <span className="text-[11px] text-on-surface-variant font-medium">โมเดล AI:</span>
               <button
                 type="button"
-                onClick={() => setDemoEngine('claude')}
-                className={cn(
-                  'rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-all cursor-pointer',
-                  demoEngine === 'claude'
-                    ? 'bg-primary text-on-primary shadow-xs'
-                    : 'bg-surface-lowest text-on-surface-variant hover:bg-surface-container',
-                )}
-                title="Claude Vision: โมเดลวิเคราะห์เชิงลึกระดับสูง คิดรอบด้านนอกกรอบคลาส"
-              >
-                ✨ Claude Vision (เทพสุด)
-              </button>
-              <button
-                type="button"
                 onClick={() => setDemoEngine('wide9')}
                 className={cn(
                   'rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-all cursor-pointer',
@@ -315,9 +302,9 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
                     ? 'bg-secondary text-on-secondary shadow-xs'
                     : 'bg-surface-lowest text-on-surface-variant hover:bg-surface-container',
                 )}
-                title="Wide-9: โมเดล 9 คลาส รวมราแป้ง"
+                title="Wide-9: โมเดล 9 คลาส รวมราแป้ง (ฟรี)"
               >
-                Wide-9
+                🔬 Wide-9 (9 คลาส)
               </button>
               <button
                 type="button"
