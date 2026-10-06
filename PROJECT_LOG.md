@@ -1055,3 +1055,29 @@ py fit_calibration.py --images data/leaf-cache --write   # วัดเครื
 9. **Tank Mix Compatibility & FRAC/IRAC Warnings (`TankMixer.tsx`):** แสดงคำเตือน "ยังไม่มีข้อมูลยืนยัน" หากผสมนอกเหนือจากสูตรที่รับรอง แนะนำขั้นตอน Jar Test 15 นาที และแสดงข้อกำหนดการสลับกลุ่มกลไกออกฤทธิ์ FRAC / IRAC ป้องกันเชื้อและแมลงดื้อยา
 10. **Build & Quality Gates Verification:** ผ่านเกณฑ์คุณภาพทั้งหมด 100% (`tsc --noEmit` 0 errors, Vitest 202/202 tests passed, Vite build passed)
 
+---
+
+## 9. Multi-Vision Engine Integration & Deployment (6 ต.ค. 2569)
+
+ต่อยอดระบบวิเคราะห์ภาพและขยายคลังความรู้โรคพืชร่วมกันระหว่าง Claude Code และ Antigravity ตามข้อตกลง `AGENTS.md`:
+
+1. **ขยายคลังความรู้โรคพืช:**
+   - ขยายจาก 8 โรคเดิม สู่ 47 โรค (`CURATED_DISEASES` 8 รายการ + `diseasesExtended.generated.ts` 39 รายการ)
+   - หน้า `src/routes/SupportedDiseases.tsx` อัปเดตแสดงจำนวนโรคจริงแบบไดนามิก (`47 ชนิด`) พร้อมแจกแจงความครอบคลุมของแต่ละเครื่องยนต์
+
+2. **เครื่องยนต์วิเคราะห์ภาพ 3 ระบบ (Multi-Vision Engines):**
+   - `legacy4`: โมเดลหลัก 4 คลาส (ปรับเทียบแล้ว แม่นยำบนภาพใบแตงโมจริง คืนแผนจัดการและค่า PHI)
+   - `wide9`: โมเดลมุมกว้าง 9 คลาส (ตรวจโรคราแป้ง Powdery Mildew เพิ่มเติมได้)
+   - `claude`: โมเดลภาษาอ่านภาพ (Claude Vision วิเคราะห์อาการเชิงบรรยายและนอกรายการคลาส)
+
+3. **UI / UX ปฏิบัติตามกฎความปลอดภัยเกษตรกรรมอย่างเคร่งครัด:**
+   - `VisionEngineModal.tsx`: ป๊อปอัปแสดงรายละเอียด ข้อดี และ **ข้อจำกัด (limits_th)** ของแต่ละเครื่องยนต์
+   - `VisionCompareCard.tsx`: การ์ดแสดงผลการวิเคราะห์เปรียบเทียบจากโมเดลเสริม (`wide9`, `claude`) แสดงสถานะ **"ข้อสังเกตเพิ่มเติม (ไม่ใช่คำวินิจฉัยหลัก)"** ไม่แสดงอัตราเคมีหรือ PHI เพื่อความปลอดภัย และติดป้าย **"ยังไม่ปรับเทียบ (คะแนนดิบ)"** ตามกฎ AGENTS.md
+   - `DiseaseScan.tsx`: กล่องเลือก Engine พร้อมปุ่มเปรียบเทียบผลลัพธ์ (1-click comparison) ให้เกษตรกรตรวจสอบมุมมองจากโมเดลอื่นได้ทันที
+
+4. **การตรวจสอบและขึ้นระบบ (Verification & Deployment):**
+   - Typecheck (`npm run lint` / `tsc --noEmit`): สะอาด 0 errors
+   - Unit Tests (`npm test` / Vitest): ผ่าน 225/225 tests (20 test files)
+   - Build (`npm run build`): สำเร็จเรียบร้อย
+   - Hosting Deploy: อัปเดตขึ้น Firebase Hosting สำเร็จที่ `https://acoustic-fruit-ripeness.web.app`
+

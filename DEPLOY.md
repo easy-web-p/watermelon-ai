@@ -142,8 +142,29 @@ gcloud run services add-iam-policy-binding watermelon-vision \
 
 ## 4. ต่อ Hosting เข้ากับ Cloud Run
 
-`firebase.json` มี rewrite ไว้แล้ว ลำดับสำคัญ: `/api/**` ต้องมาก่อน `**`
-ไม่งั้นทุกคำขอจะถูกจับโดย SPA fallback ก่อนถึง Cloud Run
+หลังจากที่ deploy เซอร์วิส `watermelon-api` ขึ้น Cloud Run ในข้อ 3 เรียบร้อยแล้ว
+ให้เปิดใช้งาน rewrite ใน `firebase.json` โดยเพิ่ม block ต่อไปนี้ไว้หน้า `**`:
+
+```json
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "watermelon-api",
+          "region": "asia-southeast1"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+```
+
+*(หมายเหตุ: หากยังไม่ได้ deploy Cloud Run หรือยังไม่ได้เปิด Cloud Run Admin API ในโปรเจกต์ Google Cloud
+การใส่ rewrite ชี้ไปที่ Cloud Run จะทำให้ Firebase Hosting ปฏิเสธ deploy ด้วย HTTP 403)*
+
+จากนั้น deploy Hosting อีกครั้ง:
 
 ```bash
 firebase deploy --only hosting
