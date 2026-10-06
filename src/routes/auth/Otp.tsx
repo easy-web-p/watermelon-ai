@@ -25,7 +25,7 @@ export function Otp() {
   const [error, setError] = useState('');
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const { navigate } = useRouter();
+  const { query, navigate } = useRouter();
   const toast = useToast();
   const pending = useAuth((state) => state.pendingOtp);
   const busy = useAuth((state) => state.status === 'loading');
@@ -85,7 +85,8 @@ export function Otp() {
     try {
       const user = await verifyOtp(code);
       toast.success(`ยินดีต้อนรับ ${user.name}`);
-      navigate('/chat');
+      const redirectTarget = query.get('redirect') || '/chat';
+      navigate(redirectTarget);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'ยืนยันรหัสไม่สำเร็จ';
       setError(message);

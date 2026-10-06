@@ -61,7 +61,7 @@ export function AccountRecovery() {
   const [method, setMethod] = useState<Method>('phone');
   const [searched, setSearched] = useState(false);
   const [phone, setPhone] = useState('084-592-8190');
-  const { navigate } = useRouter();
+  const { query, navigate } = useRouter();
   const toast = useToast();
   const requestOtp = useAuth((state) => state.requestOtp);
   const busy = useAuth((state) => state.status === 'loading');
@@ -73,7 +73,8 @@ export function AccountRecovery() {
     }
     try {
       await requestOtp(phone);
-      navigate('/otp');
+      const redirectParam = query.get('redirect') ? `?redirect=${encodeURIComponent(query.get('redirect')!)}` : '';
+      navigate('/otp' + redirectParam);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'ส่งรหัส OTP ไม่สำเร็จ');
     }
