@@ -4,6 +4,8 @@
  * Department of Agriculture FRAC grouping conventions.
  */
 
+import { EXTENDED_DISEASES } from './diseasesExtended.generated';
+
 export type Severity = 'critical' | 'high' | 'moderate';
 
 export type Disease = {
@@ -44,7 +46,14 @@ export const SEVERITY_TONE: Record<Severity, 'error' | 'primary' | 'neutral'> = 
   moderate: 'neutral',
 };
 
-export const DISEASES: readonly Disease[] = [
+/**
+ * รายการที่ตรวจทานด้วยมือ 8 รายการ
+ *
+ * รหัสเหล่านี้ถูกอ้างอิงจาก `src/lib/diseaseModel.ts` (CLASS_TO_DISEASE_ID),
+ * ชุดเทสต์ และ `server.ts` จึงเปลี่ยนรหัสหรือลบออกไม่ได้
+ * ส่วนที่เหลือของแคตตาล็อกมาจาก `diseasesExtended.generated.ts`
+ */
+export const CURATED_DISEASES: readonly Disease[] = [
   {
     id: 'anthracnose',
     name: 'โรคแอนแทรคโนส',
@@ -206,3 +215,16 @@ export const DISEASES: readonly Disease[] = [
     phi: 7,
   },
 ] as const;
+
+/**
+ * แคตตาล็อกทั้งหมดที่หน้า `/diseases` และการ์ดผลวินิจฉัยใช้
+ *
+ * = 8 รายการที่ตรวจทานด้วยมือ + 39 รายการที่ generate จากคลังความรู้ที่ผ่าน
+ * การตรวจความถูกต้องแล้ว รวม 47 รายการ
+ *
+ * จำนวนรายการในแคตตาล็อกไม่เท่ากับจำนวนคลาสที่โมเดลตรวจจับได้ ซึ่งเป็นเรื่องปกติ
+ * `OUT_OF_SCOPE_DISEASES` ใน `src/lib/diseaseModel.ts` คัดรายการที่โมเดลยังตรวจไม่ได้
+ * ออกมาให้หน้าจอแสดงแยกกันอยู่แล้ว การเพิ่มรายการที่นี่จึงไม่ทำให้ระบบอ้างว่า
+ * ตรวจโรคได้มากกว่าความจริง
+ */
+export const DISEASES: readonly Disease[] = [...CURATED_DISEASES, ...EXTENDED_DISEASES];

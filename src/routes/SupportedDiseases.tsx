@@ -180,15 +180,15 @@ export function SupportedDiseases() {
               คลังความรู้โรคแตงโมและขอบเขตการตรวจของ AI
             </h1>
             <p className="mt-3 max-w-2xl text-body-lg text-on-surface-variant">
-              ฐานข้อมูลโรคพืชและศัตรูแตงโม {DISEASES.length} ชนิดหลัก โดยโมเดล Vision AI ในปัจจุบันรองรับการตรวจคัดกรองจากภาพ 3 โรคหลัก (แอนแทรคโนส, ราน้ำค้าง, ไวรัสใบด่าง) และสภาพใบปกติ อีก 5 โรคเป็นข้อมูลอ้างอิงทางวิชาการและแนวทางจัดการแปลง
+              ฐานข้อมูลโรคพืชและศัตรูแตงโม {DISEASES.length} รายการ โดยโมเดล Vision AI ในปัจจุบัน (Legacy 4) รองรับการตรวจคัดกรองจากภาพ 4 คลาสหลัก (แอนแทรคโนส, ราน้ำค้าง, ไวรัสใบด่าง และใบปกติ) พร้อมตัวเลือกเสริมโมเดล Wide-9 และ Claude Vision สำหรับโรคอื่น ๆ ส่วนรายการที่เหลือในคลังความรู้เป็นข้อมูลอ้างอิงทางวิชาการและแนวทางจัดการแปลง
             </p>
           </div>
 
           <div className="mt-8 grid max-w-2xl grid-cols-3 gap-3">
             {[
-              { value: '4 คลาส', label: 'ที่โมเดลจำแนกได้ (3 โรค + ใบปกติ)', tone: 'text-primary' },
+              { value: '4 คลาสหลัก', label: 'โมเดลมาตรฐาน Legacy 4 (ปรับเทียบแล้ว)', tone: 'text-primary' },
               { value: `${DISEASES.length} โรค`, label: 'ข้อมูลในคลังความรู้อ้างอิง', tone: 'text-secondary' },
-              { value: '89.0%', label: 'Test Accuracy (บนชุดทดสอบ 173 ภาพ)', tone: 'text-tertiary' },
+              { value: '3 Engine', label: 'รองรับ Legacy 4, Wide-9, Claude', tone: 'text-tertiary' },
             ].map((stat) => (
               <div key={stat.label} className="rounded-lg bg-surface-lowest p-4 shadow-sm">
                 <p className={cn('text-headline-md font-bold', stat.tone)}>{stat.value}</p>

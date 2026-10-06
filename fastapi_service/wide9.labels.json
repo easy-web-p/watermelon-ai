@@ -1,0 +1,50 @@
+{
+  "labels": [
+    "alternaria_blight",
+    "angular_leaf_spot",
+    "cercospora_leaf_spot",
+    "downy_mildew",
+    "healthy",
+    "leaf_curl_virus",
+    "phytophthora_blight",
+    "powdery_mildew",
+    "watermelon_mosaic_virus"
+  ],
+  "input_size": 224,
+  "arch": "mobilenet_v3_large",
+  "val_accuracy": 0.672,
+  "train_images": 1149,
+  "per_class_recall": {
+    "alternaria_blight": 0.359,
+    "angular_leaf_spot": 0.5319,
+    "cercospora_leaf_spot": 0.6136,
+    "downy_mildew": 0.4118,
+    "healthy": 0.95,
+    "leaf_curl_virus": 0.8333,
+    "phytophthora_blight": 0.7436,
+    "powdery_mildew": 0.9677,
+    "watermelon_mosaic_virus": 0.1538
+  },
+  "note": "ชื่อคลาสต้องตรงกับรหัสโรคใน data/diseases/*.json จึงจะเชื่อมกับข้อมูลยาและปุ๋ยได้",
+  "dataset_provenance": "mapped",
+  "class_tiers": {
+    "alternaria_blight": "same_genus",
+    "angular_leaf_spot": "symptom_proxy",
+    "cercospora_leaf_spot": "symptom_proxy",
+    "downy_mildew": "symptom_proxy",
+    "healthy": "generic",
+    "leaf_curl_virus": "same_genus",
+    "phytophthora_blight": "same_genus",
+    "powdery_mildew": "same_pathogen",
+    "watermelon_mosaic_virus": "symptom_proxy"
+  },
+  "cross_crop_proxy_classes": [
+    "angular_leaf_spot",
+    "cercospora_leaf_spot",
+    "downy_mildew",
+    "watermelon_mosaic_virus"
+  ],
+  "dataset_sources": [
+    "datasets/plantdoc"
+  ]
+}

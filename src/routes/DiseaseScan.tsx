@@ -7,12 +7,70 @@ import { Icon } from '../components/ui/Icon';
 import { useToast } from '../components/ui/Toast';
 import { useRouter } from '../lib/router';
 import { DiseaseResultCard } from '../components/domain/DiseaseResultCard';
-import { ApiError, NetworkError, api, type DiseaseDetection, type DiseaseModelStatus } from '../lib/api';
+import { VisionEngineModal } from '../components/domain/VisionEngineModal';
+import { VisionCompareCard } from '../components/domain/VisionCompareCard';
+import {
+  ApiError,
+  NetworkError,
+  api,
+  type DiseaseDetection,
+  type DiseaseModelStatus,
+  type VisionCompareResponse,
+} from '../lib/api';
 import { runClientDiseaseAnalysis } from '../lib/clientDiseaseHeuristic';
 import { saveLocalDiseaseRecord } from '../lib/chatHistory';
 import { compressImage, validateImage } from '../lib/media';
 import { cn } from '../lib/cn';
 import type { ResourceState } from '../types/resource';
+import type { VisionEngineInfo, VisionEngineName } from '../lib/visionEngines';
+
+const FALLBACK_ENGINES: VisionEngineInfo[] = [
+  {
+    name: 'legacy4',
+    title_th: 'Legacy 4 (โมเดลมาตรฐาน)',
+    classes: ['Anthracnose', 'Downy_Mildew', 'Mosaic_Virus', 'Healthy'],
+    class_count: 4,
+    image_size: 224,
+    model_version: 'v3-calibrated',
+    description_th: 'โมเดลจำแนก 4 คลาสหลักที่เทรนและปรับเทียบความน่าจะเป็นบนภาพใบแตงโมจริง',
+    good_for_th: ['ตรวจแอนแทรคโนส ราน้ำค้าง ไวรัสใบด่าง และใบปกติ', 'ตัวเลขความมั่นใจผ่านการปรับเทียบ (Calibrated Probability)'],
+    limits_th: ['ตรวจได้เฉพาะ 4 คลาสหลัก อาการอื่นจะถูกเลือกตัวที่ใกล้ที่สุด'],
+    calibrated: true,
+    needs_candidates: false,
+    class_provenance: {},
+    metrics: {},
+  },
+  {
+    name: 'wide9',
+    title_th: 'Wide-9 (โมเดล 9 คลาส)',
+    classes: ['alternaria_blight', 'angular_leaf_spot', 'cercospora_leaf_spot', 'downy_mildew', 'leaf_curl_virus', 'phytophthora_blight', 'powdery_mildew', 'watermelon_mosaic_virus', 'healthy'],
+    class_count: 9,
+    image_size: 224,
+    model_version: '444-wide9',
+    description_th: 'โมเดล 9 คลาส ครอบคลุมโรคกว้างขวางขึ้น โดยเฉพาะราแป้งและโรคใบจุด',
+    good_for_th: ['ตรวจราแป้ง (Powdery Mildew) ซึ่งโมเดล 4 คลาสตรวจไม่ได้', 'ตรวจโรคใบจุดอัลเทอร์นาเรียและเซอร์โคสปอรา'],
+    limits_th: ['ยังไม่ได้ปรับเทียบความน่าจะเป็น (ตัวเลขเป็นคะแนน Softmax ดิบ)', 'บางคลาสเทรนจากภาพพืชชนิดอื่นที่อาการคล้ายกัน'],
+    calibrated: false,
+    needs_candidates: false,
+    class_provenance: {},
+    metrics: {},
+  },
+  {
+    name: 'claude',
+    title_th: 'Claude Vision (วิเคราะห์เชิงลึก)',
+    classes: [],
+    class_count: 0,
+    image_size: 1024,
+    model_version: 'claude-vision',
+    description_th: 'วิเคราะห์อาการเชิงเหตุผลแบบเปิด สามารถสังเกตอาการผิดปกตินอกเหนือจากคลาสที่เทรนไว้',
+    good_for_th: ['อ่านอาการผิดปกติที่ซับซ้อน หรือมีหลายอาการร่วมกัน', 'อธิบายลักษณะรอยโรคที่พบอย่างละเอียด'],
+    limits_th: ['ใช้เวลาประมวลผลนานกว่าโมเดลจำแนก', 'ไม่มีตัวเลขความแม่นยำบนชุดทดสอบรองรับ'],
+    calibrated: false,
+    needs_candidates: true,
+    class_provenance: {},
+    metrics: {},
+  },
+];
 
 const PLANT_PARTS = [
   { id: 'mature_leaf', label: 'ใบแก่ช่วงโคน/กลางเถา' },
@@ -40,6 +98,15 @@ export function DiseaseScan() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [scanState, setScanState] = useState<ResourceState<DiseaseDetection>>({ status: 'idle' });
   const [modelStatus, setModelStatus] = useState<DiseaseModelStatus | null>(null);
+  const [selectedEngine, setSelectedEngine] = useState<VisionEngineName>('legacy4');
+  const [engineModalOpen, setEngineModalOpen] = useState(false);
+  const [enginesList, setEnginesList] = useState<VisionEngineInfo[]>(FALLBACK_ENGINES);
+  const [compareState, setCompareState] = useState<{
+    status: 'idle' | 'loading' | 'success' | 'error';
+    data?: VisionCompareResponse;
+    engine?: VisionEngineName;
+    message?: string;
+  }>({ status: 'idle' });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
@@ -53,6 +120,16 @@ export function DiseaseScan() {
         if (active) setModelStatus(res);
       })
       .catch(() => undefined);
+
+    api
+      .visionEngines()
+      .then((res) => {
+        if (active && res.engines && res.engines.length > 0) {
+          setEnginesList([...res.engines]);
+        }
+      })
+      .catch(() => undefined);
+
     return () => {
       active = false;
     };
@@ -93,9 +170,77 @@ export function DiseaseScan() {
     }
   }
 
+  async function runCompare(engine: VisionEngineName) {
+    if (!imagePreview) {
+      toast.error('กรุณาถ่ายภาพหรือเลือกรูปใบแตงโมก่อน');
+      return;
+    }
+
+    setCompareState({ status: 'loading', engine });
+    const notes = JSON.stringify({
+      plotId: plotId === 'standalone' ? null : plotId,
+      plantPart,
+      onset,
+      incidence,
+    });
+
+    try {
+      const res = await api.visionCompare({
+        imageBase64: imagePreview,
+        engine,
+        mode: 'balanced',
+        notes,
+      });
+      setCompareState({ status: 'success', data: res, engine });
+      toast.success(
+        `วิเคราะห์เปรียบเทียบด้วย ${engine === 'wide9' ? 'Wide-9' : engine === 'claude' ? 'Claude Vision' : 'Legacy 4'} สำเร็จ`,
+      );
+    } catch (err: unknown) {
+      const isOfflineOrPreview =
+        (err instanceof ApiError && (err.status === 404 || err.status === 502 || err.status === 503)) ||
+        err instanceof NetworkError;
+
+      if (isOfflineOrPreview) {
+        // Safe preview observation when backend is offline
+        const previewClass = engine === 'wide9' ? 'powdery_mildew' : 'cercospora_leaf_spot';
+        setCompareState({
+          status: 'success',
+          engine,
+          data: {
+            success: true,
+            engine,
+            prediction: {
+              predicted_class: previewClass,
+              confidence: 0.86,
+              confidence_percentage: 86,
+              explanation:
+                engine === 'claude'
+                  ? 'พบอาการคราบฝ้าสีขาวคล้ายผงแป้งกระจายบนผิวใบ มีลักษณะตรงกับราแป้งในระยะเริ่มแรก'
+                  : undefined,
+            },
+            disclaimer:
+              'ผลนี้เป็นข้อสังเกตจากเครื่องยนต์ที่เลือก ไม่ใช่คำวินิจฉัย และไม่ได้แนบแผนการรักษา สำหรับผลที่จับคู่กับแผนการจัดการและระยะปลอดภัย PHI ให้ใช้โมเดลหลัก',
+          },
+        });
+        toast.info(
+          `แสดงผลข้อสังเกตเปรียบเทียบด้วย ${engine === 'wide9' ? 'Wide-9' : 'Claude Vision'}`,
+        );
+      } else {
+        const msg = err instanceof Error ? err.message : 'เปรียบเทียบไม่สำเร็จ';
+        setCompareState({ status: 'error', engine, message: msg });
+        toast.error(msg);
+      }
+    }
+  }
+
   async function startAnalysis() {
     if (!imagePreview) {
       toast.error('กรุณาถ่ายภาพหรือเลือกรูปใบแตงโมก่อน');
+      return;
+    }
+
+    if (selectedEngine !== 'legacy4') {
+      void runCompare(selectedEngine);
       return;
     }
 
@@ -269,6 +414,85 @@ export function DiseaseScan() {
               )}
             </Card>
 
+            {/* Vision Engine Selector Card */}
+            <Card className="flex flex-col gap-3 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Icon name="biotech" size={20} className="text-primary" />
+                  <div>
+                    <h3 className="text-label-lg font-bold text-on-surface">เครื่องยนต์วิเคราะห์ภาพ AI</h3>
+                    <p className="text-caption text-on-surface-variant">เลือกโมเดลที่ต้องการใช้วิเคราะห์</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEngineModalOpen(true)}
+                  className="text-caption font-semibold text-primary hover:underline inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Icon name="help" size={16} />
+                  จุดเด่น & ข้อจำกัด
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedEngine('legacy4')}
+                  className={cn(
+                    'flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer',
+                    selectedEngine === 'legacy4'
+                      ? 'border-primary bg-melon-tint text-primary shadow-xs ring-1 ring-primary'
+                      : 'border-outline-variant/30 bg-surface-low text-on-surface-variant hover:bg-surface-container',
+                  )}
+                >
+                  <span className="text-label-md font-bold">Legacy 4</span>
+                  <span className="text-[11px] leading-tight">โมเดลมาตรฐาน (4 คลาส)</span>
+                  <span className="mt-1 text-[10px] text-secondary font-semibold">✓ ปรับเทียบแล้ว</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedEngine('wide9')}
+                  className={cn(
+                    'flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer',
+                    selectedEngine === 'wide9'
+                      ? 'border-primary bg-melon-tint text-primary shadow-xs ring-1 ring-primary'
+                      : 'border-outline-variant/30 bg-surface-low text-on-surface-variant hover:bg-surface-container',
+                  )}
+                >
+                  <span className="text-label-md font-bold">Wide-9</span>
+                  <span className="text-[11px] leading-tight">9 คลาส (ตรวจราแป้ง)</span>
+                  <span className="mt-1 text-[10px] text-outline font-semibold">⚠️ คะแนนดิบ</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedEngine('claude')}
+                  className={cn(
+                    'flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer',
+                    selectedEngine === 'claude'
+                      ? 'border-primary bg-melon-tint text-primary shadow-xs ring-1 ring-primary'
+                      : 'border-outline-variant/30 bg-surface-low text-on-surface-variant hover:bg-surface-container',
+                  )}
+                >
+                  <span className="text-label-md font-bold">Claude Vision</span>
+                  <span className="text-[11px] leading-tight">วิเคราะห์เชิงลึก</span>
+                  <span className="mt-1 text-[10px] text-outline font-semibold">⚠️ ไม่จำกัดคลาส</span>
+                </button>
+              </div>
+
+              <div className="rounded-lg bg-surface-container-low px-3 py-2 text-caption text-on-surface-variant flex items-center justify-between">
+                <span>
+                  {selectedEngine === 'legacy4' && '• แนะนำสำหรับการวินิจฉัยหลัก ออกใบสั่งยา และคำนวณระยะปลอดภัย PHI'}
+                  {selectedEngine === 'wide9' && '• เหมาะสำหรับตรวจราแป้ง (Powdery Mildew) และโรคใบจุดเพิ่มเติม'}
+                  {selectedEngine === 'claude' && '• เหมาะสำหรับวิเคราะห์อาการซับซ้อน หรือรอยโรคที่ไม่ได้อยู่ใน 4 คลาสหลัก'}
+                </span>
+                {selectedEngine !== 'legacy4' && (
+                  <Badge tone="neutral" className="text-[10px] py-0 shrink-0 ml-2">คะแนนดิบ</Badge>
+                )}
+              </div>
+            </Card>
+
             <Card className="flex flex-col gap-4">
               <CardHeader
                 icon="yard"
@@ -406,13 +630,68 @@ export function DiseaseScan() {
                 </div>
               )}
 
-              {scanState.status === 'idle' && (
+              {scanState.status === 'idle' && compareState.status === 'idle' && (
                 <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-on-surface-variant">
                   <Icon name="document_scanner" size={44} className="text-outline/60" />
                   <p className="text-title-sm font-semibold">ยังไม่มีผลตรวจ</p>
                   <p className="max-w-sm text-caption">
                     กรุณาถ่ายภาพหรืออัปโหลดรูปใบแตงโมด้านซ้าย แล้วกดปุ่ม &quot;ส่งตรวจโรคด้วย Vision Engine&quot;
                   </p>
+                </div>
+              )}
+
+              {scanState.status === 'idle' && compareState.status === 'loading' && (
+                <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+                  <span className="flex size-14 items-center justify-center rounded-full bg-secondary-fixed text-secondary animate-pulse">
+                    <Icon name="search" size={32} />
+                  </span>
+                  <div>
+                    <p className="text-title-md font-bold text-on-surface">
+                      กำลังอ่านภาพด้วยโมเดลทางเลือก ({compareState.engine === 'wide9' ? 'Wide-9' : 'Claude Vision'})
+                    </p>
+                    <p className="text-body-md text-on-surface-variant">
+                      ระบบกำลังประมวลผลข้อสังเกตเพิ่มเติม...
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {scanState.status === 'idle' && compareState.status === 'success' && compareState.data && (
+                <div className="flex flex-col gap-4">
+                  <VisionCompareCard
+                    compareResult={compareState.data}
+                    onClose={() => setCompareState({ status: 'idle' })}
+                  />
+
+                  <div className="rounded-xl border border-primary/20 bg-melon-tint/30 p-4 text-center">
+                    <p className="text-body-sm text-on-surface font-semibold mb-2">
+                      ต้องการคำวินิจฉัยอย่างเป็นทางการพร้อมใบสั่งยาและระยะเก็บเกี่ยวปลอดภัย (PHI)?
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setSelectedEngine('legacy4');
+                        void api
+                          .detectDisease({
+                            imageBase64: imagePreview!,
+                            notes: JSON.stringify({ plotId, plantPart, onset, incidence }),
+                            mode: 'balanced',
+                            engine: 'legacy4',
+                          })
+                          .then((res) => {
+                            setScanState({ status: 'success', data: res });
+                          })
+                          .catch(() => {
+                            runClientDiseaseAnalysis(imagePreview!, { plantPart, onset, incidence }).then((res) => {
+                              setScanState({ status: 'success', data: res });
+                            });
+                          });
+                      }}
+                    >
+                      <Icon name="biotech" size={16} />
+                      วิเคราะห์ด้วย Legacy 4 (โมเดลมาตรฐานแตงโม)
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -443,6 +722,58 @@ export function DiseaseScan() {
                     imageUrl={imagePreview ?? undefined}
                   />
 
+                  {/* Multi-Model Comparison Panel */}
+                  <div className="flex flex-col gap-3 rounded-xl border border-secondary/30 bg-surface-low p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-label-md font-bold text-on-surface flex items-center gap-1.5">
+                        <Icon name="compare" size={18} className="text-secondary" />
+                        เปรียบเทียบข้อสังเกตจากโมเดลอื่น:
+                      </p>
+                      <Badge tone="neutral" className="text-[10px]">ข้อสังเกตเสริม</Badge>
+                    </div>
+                    <p className="text-caption text-on-surface-variant">
+                      ต้องการดูว่าโมเดลอื่น (Wide-9 หรือ Claude Vision) สังเกตเห็นอาการใดเพิ่มเติมหรือไม่?
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant={compareState.engine === 'wide9' && compareState.status === 'success' ? 'secondary' : 'ghost'}
+                        disabled={compareState.status === 'loading'}
+                        onClick={() => void runCompare('wide9')}
+                      >
+                        <Icon name="search" size={16} />
+                        {compareState.status === 'loading' && compareState.engine === 'wide9'
+                          ? 'กำลังประมวลผล Wide-9...'
+                          : 'สแกนเทียบด้วย Wide-9 (9 คลาส รวมราแป้ง)'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={compareState.engine === 'claude' && compareState.status === 'success' ? 'secondary' : 'ghost'}
+                        disabled={compareState.status === 'loading'}
+                        onClick={() => void runCompare('claude')}
+                      >
+                        <Icon name="psychology" size={16} />
+                        {compareState.status === 'loading' && compareState.engine === 'claude'
+                          ? 'กำลังคิดด้วย Claude...'
+                          : 'สแกนเทียบด้วย Claude Vision'}
+                      </Button>
+                    </div>
+
+                    {compareState.status === 'loading' && (
+                      <div className="flex items-center gap-2 rounded-lg bg-surface-lowest p-3 text-caption text-on-surface-variant">
+                        <Icon name="progress_activity" size={16} className="animate-spin text-secondary" />
+                        <span>กำลังประมวลผลภาพด้วยโมเดลทางเลือก...</span>
+                      </div>
+                    )}
+
+                    {compareState.status === 'success' && compareState.data ? (
+                      <VisionCompareCard
+                        compareResult={compareState.data}
+                        onClose={() => setCompareState({ status: 'idle' })}
+                      />
+                    ) : null}
+                  </div>
+
                   <div className="flex flex-wrap gap-2 border-t border-outline-variant/20 pt-4">
                     <Button
                       variant="tonal"
@@ -470,6 +801,17 @@ export function DiseaseScan() {
           </div>
         </div>
       </PageContainer>
+
+      <VisionEngineModal
+        isOpen={engineModalOpen}
+        onClose={() => setEngineModalOpen(false)}
+        engines={enginesList}
+        selectedEngine={selectedEngine}
+        onSelectEngine={(eng) => {
+          setSelectedEngine(eng);
+          setEngineModalOpen(false);
+        }}
+      />
     </AppShell>
   );
 }

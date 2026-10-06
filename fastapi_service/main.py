@@ -48,6 +48,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
+import engines
 import inference
 from model import CLASSES, IMAGE_SIZE, preprocess, softmax
 
@@ -60,9 +61,41 @@ Mode = Literal["fast", "balanced", "deep"]
 DEFAULT_MODE: Mode = os.getenv("VISION_MODE", inference.DEFAULT_MODE)  # type: ignore[assignment]
 
 
+class DiseaseCandidate(BaseModel):
+    """รายการโรคหนึ่งรายการที่ผู้เรียกอนุญาตให้ engine เลือกได้
+
+    เซอร์วิสนี้ไม่เก็บแคตตาล็อกโรคไว้เอง ตามขอบเขตที่อธิบายไว้ด้านบนของไฟล์
+    ผู้เรียก (Node API ซึ่ง import แคตตาล็อกจาก src/data/diseases.ts) ส่งมาต่อคำขอ
+    """
+
+    id: str = Field(min_length=1)
+    name: str = ""
+    cues: str = ""
+
+
 class Base64PredictRequest(BaseModel):
     imageBase64: str = Field(min_length=1)
     mode: Mode | None = None
+    engine: str | None = None
+    candidates: list[DiseaseCandidate] | None = None
+    userContext: str = ""
+
+
+def _resolve_engine(requested: str | None) -> engines.Engine:
+    """เลือก engine ตามที่ผู้เรียกระบุ หรือใช้ค่าเริ่มต้นของเซอร์วิส
+
+    ชื่อที่ไม่มีในทะเบียนต้องตอบ 422 พร้อมบอกว่ามีอะไรให้ใช้ ไม่ใช่เงียบ ๆ
+    ถอยไปใช้ตัวเริ่มต้น เพราะผู้เรียกที่ขอ engine หนึ่งแล้วได้ผลจากอีกตัว
+    จะตีความตัวเลขความมั่นใจผิด (ตัวหนึ่งปรับเทียบแล้ว อีกตัวยังไม่)
+    """
+    registry: dict[str, engines.Engine] = app.state.engines
+    name = requested or app.state.default_engine
+    if name not in registry:
+        raise HTTPException(
+            status_code=422,
+            detail=f"engine ต้องเป็นหนึ่งใน {', '.join(registry)} (ได้รับ '{name}')",
+        )
+    return registry[name]
 
 
 def _decode_image(data: bytes) -> Image.Image:
@@ -140,8 +173,21 @@ async def lifespan(app: FastAPI):
     app.state.model_version = f"{app.state.architecture}@{digest}"
     app.state.trained_epoch = meta.get("trained_epoch")
     app.state.calibration = calibration
+
+    # ทะเบียน engine สร้างหลังด่านตรวจข้างบนผ่านแล้ว โดยส่ง session ของ legacy4
+    # ที่เปิดไว้แล้วเข้าไปใช้ต่อ ไม่เปิดใหม่ให้โหลดโมเดลซ้ำ
+    app.state.engines = engines.build_registry(
+        MODEL_PATH,
+        session,
+        app.state.input_name,
+        app.state.output_name,
+        calibration,
+        app.state.model_version,
+    )
+    app.state.default_engine = engines.default_engine_name(app.state.engines)
     yield
     app.state.session = None
+    app.state.engines = {}
 
 
 app = FastAPI(
@@ -174,6 +220,9 @@ def health():
         "engine_version": inference.ENGINE_VERSION,
         "modes": list(inference.MODES),
         "default_mode": DEFAULT_MODE,
+        # รายชื่อเครื่องยนต์ที่เปิดใช้ได้ รายละเอียดเต็มอยู่ที่ /engines
+        "engines": sorted(app.state.engines),
+        "default_engine": app.state.default_engine,
         # Reported so a caller can tell whether `confidence` is a probability
         # or a raw softmax score, which changes how it should be worded.
         "calibration": calibration.to_dict(),
@@ -193,35 +242,77 @@ def metrics():
     return json.loads(METRICS_PATH.read_text(encoding="utf-8"))
 
 
-def _predict(image: Image.Image, mode: Mode) -> dict:
-    return inference.run(
-        app.state.session,
-        app.state.input_name,
-        app.state.output_name,
-        image,
-        mode=mode,
-        calibration=app.state.calibration,
-        model_version=app.state.model_version,
-    )
+@app.get("/engines")
+def list_engines():
+    """เครื่องยนต์ที่เปิดใช้ได้ พร้อมข้อดีข้อจำกัดของแต่ละตัว
+
+    มีไว้ให้ผู้เรียกเลือกได้อย่างมีข้อมูลประกอบ ไม่ใช่เดาจากชื่อ
+    โดยเฉพาะ `calibrated` ซึ่งบอกว่าตัวเลข confidence ตีความเป็นความน่าจะเป็นได้หรือไม่
+    """
+    registry: dict[str, engines.Engine] = app.state.engines
+    return {
+        "default": app.state.default_engine,
+        "engines": [engine.to_dict() for engine in registry.values()],
+        "note": (
+            "ไม่มี engine ใดดีกว่าอีกตัวในทุกงาน legacy4 ปรับเทียบแล้วและวัดผลบนภาพแตงโมจริง "
+            "แต่ตรวจได้ 4 คลาส ส่วน wide9 ครอบคลุมกว้างกว่าแต่ยังไม่ปรับเทียบ "
+            "และบางคลาสเทรนจากภาพโรคของพืชอื่น"
+        ),
+    }
+
+
+def _predict(
+    image: Image.Image,
+    mode: Mode,
+    engine: engines.Engine,
+    context: dict | None = None,
+) -> dict:
+    """เรียก engine ที่เลือก และแปลงข้อผิดพลาดให้เป็น HTTP ที่สื่อความ
+
+    engine ที่ต้องพึ่งบริการภายนอก (claude) ล้มได้ด้วยเหตุที่ผู้เรียกแก้ไม่ได้
+    เช่น เครือข่ายล่มหรือโควตาหมด ซึ่งต้องเป็น 502 ไม่ใช่ 500 และต้องไม่ถอยไปใช้
+    engine อื่นเงียบ ๆ เพราะผู้เรียกจะตีความตัวเลขความมั่นใจผิดโมเดล
+    """
+    payload = context or {}
+    if engine.needs_candidates and not payload.get("candidates"):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"engine '{engine.name}' ต้องได้รับรายการโรคที่เลือกได้ (candidates) "
+                "จากผู้เรียก เพราะเซอร์วิสนี้ไม่เก็บแคตตาล็อกโรคไว้เอง"
+            ),
+        )
+    try:
+        return engine.predict(image, mode, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — ครอบคลุมความล้มเหลวของบริการภายนอก
+        raise HTTPException(
+            status_code=502,
+            detail=f"engine '{engine.name}' ทำงานไม่สำเร็จ: {exc}",
+        ) from exc
 
 
 @app.post("/predict")
 async def predict_file(
     file: UploadFile = File(...),
     mode: str | None = Query(default=None, description="fast | balanced | deep"),
+    engine: str | None = Query(default=None, description="legacy4 | wide9"),
 ):
     resolved = _resolve_mode(mode)
+    selected = _resolve_engine(engine)
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=415, detail="รองรับเฉพาะไฟล์ JPEG, PNG และ WebP")
     data = await file.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="ไฟล์ภาพใหญ่เกิน 10 MB")
-    return _predict(_decode_image(data), resolved)
+    return _predict(_decode_image(data), resolved, selected)
 
 
 @app.post("/predict-base64")
 async def predict_base64(payload: Base64PredictRequest):
     resolved = _resolve_mode(payload.mode)
+    selected = _resolve_engine(payload.engine)
     raw = payload.imageBase64
     # Browsers hand over a data URL; keep only the payload after the comma.
     if raw.startswith("data:"):
@@ -232,7 +323,15 @@ async def predict_base64(payload: Base64PredictRequest):
         raise HTTPException(status_code=422, detail=f"ถอดรหัส base64 ไม่สำเร็จ: {exc}") from exc
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="ไฟล์ภาพใหญ่เกิน 10 MB")
-    return _predict(_decode_image(data), resolved)
+    return _predict(
+        _decode_image(data),
+        resolved,
+        selected,
+        {
+            "candidates": [c.model_dump() for c in payload.candidates or []],
+            "user_context": payload.userContext,
+        },
+    )
 
 
 @app.post("/predict-raw")

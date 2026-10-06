@@ -7,3 +7,8 @@ fastapi>=0.115
 uvicorn>=0.30
 python-multipart>=0.0.18
 pydantic>=2.9
+
+# --- ไม่บังคับ (optional) ---
+# ใช้เฉพาะเมื่อเปิด engine "claude" ซึ่งต้องตั้ง ANTHROPIC_API_KEY ด้วย
+# ถ้าไม่ติดตั้ง engine นี้จะไม่ปรากฏในทะเบียน เซอร์วิสยังทำงานได้ตามปกติ
+# anthropic>=1,<2

@@ -18,6 +18,12 @@ fastapi_service/model.pt
 fastapi_service/model.onnx
 fastapi_service/model.onnx.data
 
+# โมเดล 9 คลาสของ engine wide9 ตามกฎเดียวกับด้านบน
+# ส่วน wide9.labels.json ขนาดเล็กและเป็นเอกสารประกอบโมเดล (ลำดับคลาส
+# ที่มาของข้อมูลเทรนรายคลาส ผลวัด recall) จึง commit ไว้ ไม่ ignore
+fastapi_service/wide9.onnx
+fastapi_service/wide9.onnx.data
+
 # Produced by a calibration run against a specific set of labelled photos, and
 # only meaningful next to the model.onnx it was fitted for. Committing one would
 # make /health report `calibration.fitted: true` on a machine holding different

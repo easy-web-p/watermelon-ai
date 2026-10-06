@@ -1,0 +1,18 @@
+# model.pt เป็น checkpoint ของ PyTorch ที่ใช้เฉพาะตอนเทรนและตอน export
+# เส้นทางเสิร์ฟใช้ model.onnx เท่านั้น — 16 MB ที่ไม่ต้องติดมากับอิมเมจ
+model.pt
+
+__pycache__
+*.pyc
+.pytest_cache
+
+# สคริปต์ที่ใช้เฉพาะตอนเทรน/ประเมินผล ต้องการ torch ซึ่งอิมเมจนี้ไม่ได้ติดตั้ง
+train.py
+torch_arch.py
+export_onnx.py
+evaluation.py
+fit_calibration.py
+selfcheck.py
+requirements-train.txt
+
+*.md

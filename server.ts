@@ -1654,6 +1654,26 @@ const VISION_TIMEOUT_MS = Number(process.env.VISION_TIMEOUT_MS) || 20_000;
  */
 const VISION_MODES = ["fast", "balanced", "deep"] as const;
 
+/**
+ * เครื่องยนต์ที่เซอร์วิสรองรับ (ดู `fastapi_service/engines.py`)
+ *
+ * `/disease-detect` ใช้ `legacy4` เท่านั้นโดยเจตนา เพราะ `buildDetection`
+ * เขียนตัวเลข recall จากชุดทดสอบของ checkpoint นั้นลงในคำเตือนที่เกษตรกรอ่าน
+ * การส่งผลของโมเดลอื่นผ่านเส้นทางเดียวกันจะทำให้ตัวเลขนั้นกลายเป็นคำกล่าวอ้าง
+ * ความแม่นยำที่ไม่จริง — `wide9` วัดผลบนภาพของพืชอื่น และ `claude` ไม่มีผลวัดเลย
+ *
+ * engine ตัวอื่นเข้าถึงได้ทาง `/watermelon/vision-compare` ซึ่งคืนผลดิบจากเซอร์วิส
+ * พร้อมระบุชัดว่าไม่ใช่คำวินิจฉัยและไม่ผ่านการจับคู่กับแผนการรักษา
+ */
+const VISION_ENGINES = ["legacy4", "wide9", "claude"] as const;
+type VisionEngineName = (typeof VISION_ENGINES)[number];
+
+/** claude เรียกโมเดลภาษาที่ใช้เวลาคิดนานกว่าโมเดลจำแนกหลายเท่า */
+function visionTimeoutFor(engine: VisionEngineName): number {
+  if (engine === "claude") return Number(process.env.VISION_CLAUDE_TIMEOUT_MS) || 180_000;
+  return VISION_TIMEOUT_MS;
+}
+
 type VisionOutcome =
   | { ok: true; diagnosis: DiseaseDetection }
   | { ok: false; status: number; error: string; detail?: string };
@@ -1812,6 +1832,116 @@ app.get("/api/v1/watermelon/disease-model", async (req, res) => {
       error: "ยังเชื่อมต่อระบบวิเคราะห์ภาพไม่ได้",
       detail: err instanceof Error ? err.message : String(err),
       benchmark: MODEL_SUMMARY,
+    });
+  }
+});
+
+/**
+ * เครื่องยนต์วิเคราะห์ภาพที่เปิดใช้ได้ พร้อมข้อดีข้อจำกัดของแต่ละตัว
+ *
+ * ส่งต่อจาก `GET /engines` ของเซอร์วิส Python ตรง ๆ ไม่สรุปย่อ เพราะฟิลด์
+ * `calibrated` และ `limits_th` เป็นสิ่งที่หน้าจอต้องแสดงให้ผู้ใช้เห็นก่อนเลือก
+ * ไม่ใช่รายละเอียดที่ซ่อนได้
+ */
+app.get("/api/v1/watermelon/vision-engines", async (_req, res) => {
+  try {
+    const response = await fetch(`${VISION_SERVICE_URL}/engines`, {
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) throw new Error(`vision service returned ${response.status}`);
+    res.json({ success: true, ...(await response.json()) });
+  } catch (err) {
+    res.status(503).json({
+      success: false,
+      error: "ยังเชื่อมต่อระบบวิเคราะห์ภาพไม่ได้ จึงยังไม่ทราบว่ามีเครื่องยนต์ใดให้ใช้",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+/**
+ * อ่านภาพเดียวด้วยเครื่องยนต์ที่ระบุ แล้วคืนผลดิบจากเซอร์วิส
+ *
+ * **ไม่ใช่เส้นทางวินิจฉัย** และไม่แนบแผนการรักษา ต่างจาก `/disease-detect`
+ * ที่จับคู่ผลกับแคตตาล็อกและเขียนตัวเลขความแม่นยำจากชุดทดสอบลงไปด้วย
+ *
+ * มีไว้สองอย่าง: ให้เปรียบเทียบเครื่องยนต์บนภาพเดียวกันได้ และให้เข้าถึง
+ * `wide9` กับ `claude` ซึ่งครอบคลุมโรคกว้างกว่า โดยไม่ยืมตัวเลขความแม่นยำ
+ * ของ `legacy4` มาอ้าง ผู้เรียกต้องแสดงผลนี้เป็นข้อสังเกต ไม่ใช่ข้อสรุป
+ */
+app.post("/api/v1/watermelon/vision-compare", async (req, res) => {
+  const { imageBase64, mode, engine, notes } = (req.body ?? {}) as {
+    imageBase64?: string;
+    mode?: string;
+    engine?: string;
+    notes?: string;
+  };
+
+  if (typeof imageBase64 !== "string" || imageBase64.length === 0) {
+    return res.status(422).json({ success: false, error: "ต้องส่ง imageBase64" });
+  }
+  if (engine !== undefined && !VISION_ENGINES.includes(engine as VisionEngineName)) {
+    return res.status(422).json({
+      success: false,
+      error: `engine ต้องเป็นหนึ่งใน ${VISION_ENGINES.join(", ")} (ได้รับ '${engine}')`,
+    });
+  }
+  const selected = (engine as VisionEngineName) ?? "legacy4";
+  const requestedMode = VISION_MODES.includes(mode as (typeof VISION_MODES)[number])
+    ? mode
+    : undefined;
+
+  // claude เลือกจากรายชื่อโรคที่เราส่งไปให้ เซอร์วิส Python ไม่เก็บแคตตาล็อกไว้เอง
+  // ส่งเฉพาะรหัส ชื่อ และอาการย่อ ไม่ส่งอัตราสารหรือค่า PHI ให้โมเดลเห็น
+  const candidates =
+    selected === "claude"
+      ? DISEASES.map((d) => ({
+          id: d.id,
+          name: d.name,
+          cues: d.symptoms.slice(0, 2).join(" / ").slice(0, 220),
+        }))
+      : undefined;
+
+  try {
+    const response = await fetch(`${VISION_SERVICE_URL}/predict-base64`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        imageBase64,
+        engine: selected,
+        ...(requestedMode ? { mode: requestedMode } : {}),
+        ...(candidates ? { candidates, userContext: notes ?? "" } : {}),
+      }),
+      signal: AbortSignal.timeout(visionTimeoutFor(selected)),
+    });
+
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const clientFault = response.status >= 400 && response.status < 500;
+      return res.status(clientFault ? 422 : 502).json({
+        success: false,
+        engine: selected,
+        error: clientFault
+          ? "อ่านภาพไม่สำเร็จหรือคำขอไม่ถูกต้อง"
+          : "เครื่องยนต์วิเคราะห์ภาพตอบกลับผิดพลาด",
+        detail: typeof body === "object" && body && "detail" in body ? String(body.detail).slice(0, 300) : undefined,
+      });
+    }
+
+    res.json({
+      success: true,
+      engine: selected,
+      prediction: body,
+      disclaimer:
+        "ผลนี้เป็นข้อสังเกตจากเครื่องยนต์ที่เลือก ไม่ใช่คำวินิจฉัย และไม่ได้แนบแผนการรักษา " +
+        "สำหรับผลที่จับคู่กับแผนการจัดการแล้วให้ใช้ /watermelon/disease-detect",
+    });
+  } catch (err) {
+    res.status(503).json({
+      success: false,
+      engine: selected,
+      error: "ระบบวิเคราะห์ภาพยังไม่พร้อมใช้งาน — ระบบจะไม่เดาผลโรคให้",
+      detail: err instanceof Error ? err.message : String(err),
     });
   }
 });

@@ -8,6 +8,7 @@
  */
 
 import type { ClassMetrics, DetectionStatus, DiseaseDetection } from './diseaseModel';
+import type { VisionEngineList, VisionEngineName } from './visionEngines';
 
 const RAW_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? '';
 export const API_BASE = `${RAW_BASE}/api/v1`;
@@ -283,6 +284,31 @@ export {
   modelCoverage,
 } from './diseaseModel';
 
+export type VisionComparePrediction = {
+  class_id?: string;
+  predicted_class?: string;
+  confidence?: number;
+  confidence_percentage?: number;
+  engine?: string;
+  explanation?: string;
+  reasons?: string[];
+  findings?: string[];
+  raw_scores?: Record<string, number>;
+  leaf_check?: {
+    is_leaf?: boolean;
+    confidence?: number;
+    reason?: string;
+  };
+  [key: string]: unknown;
+};
+
+export type VisionCompareResponse = {
+  success: boolean;
+  engine: VisionEngineName;
+  prediction: VisionComparePrediction;
+  disclaimer: string;
+};
+
 export type DiseaseRecord = {
   id: string;
   detectedAt: string;
@@ -461,7 +487,49 @@ export const api = {
     farmId?: string;
     notes?: string;
     mode?: 'fast' | 'balanced' | 'deep';
-  }) => request<DiseaseDetection>('/watermelon/disease-detect', { method: 'POST', body, timeout: 60_000 }),
+    /**
+     * เครื่องยนต์ที่จะใช้อ่านภาพ ละไว้เพื่อใช้ค่าเริ่มต้นของเซอร์วิส (`legacy4`)
+     *
+     * ชื่อที่เซอร์วิสไม่รู้จักจะถูกตอบ 422 ไม่ใช่ถอยไปใช้ตัวเริ่มต้นเงียบ ๆ
+     * เพราะแต่ละตัวตีความตัวเลข `confidence` ต่างกัน — `legacy4` ปรับเทียบแล้ว
+     * ส่วนตัวอื่นยังไม่ ดูข้อดีข้อจำกัดรายตัวจาก `visionEngines()`
+     *
+     * `claude` ต้องใช้เวลานานกว่าหลายเท่าและมีค่าใช้จ่ายต่อการเรียก
+     * จึงควรให้ผู้ใช้เลือกเอง ไม่ตั้งเป็นค่าเริ่มต้น
+     */
+    engine?: VisionEngineName;
+  }) =>
+    request<DiseaseDetection>('/watermelon/disease-detect', {
+      method: 'POST',
+      body,
+      // claude ที่ effort สูงใช้เวลาคิดนานกว่าโมเดลจำแนกมาก
+      timeout: body.engine === 'claude' ? 180_000 : 60_000,
+    }),
+
+  /**
+   * เครื่องยนต์ที่เปิดใช้ได้ พร้อมข้อดีข้อจำกัดของแต่ละตัว
+   *
+   * ให้หน้าจอแสดงตัวเลือกจากของจริงที่เซอร์วิสมี ไม่ใช่รายชื่อที่ hard-code ไว้
+   * `calibrated` คือฟิลด์ที่สำคัญที่สุด: ถ้าเป็น false ห้ามเขียนกำกับว่าตัวเลข
+   * ความมั่นใจคือความน่าจะเป็น
+   */
+  visionEngines: () => request<VisionEngineList>('/watermelon/vision-engines', { timeout: 8_000 }),
+
+  /**
+   * อ่านภาพเดียวด้วยเครื่องยนต์ที่ระบุ คืนผลดิบและข้อสังเกตจากเซอร์วิส
+   * สำหรับเปรียบเทียบมุมมองของแต่ละ engine โดยไม่ปะปนกับคำวินิจฉัยหลัก
+   */
+  visionCompare: (body: {
+    imageBase64: string;
+    engine?: VisionEngineName;
+    mode?: 'fast' | 'balanced' | 'deep';
+    notes?: string;
+  }) =>
+    request<VisionCompareResponse>('/watermelon/vision-compare', {
+      method: 'POST',
+      body,
+      timeout: body.engine === 'claude' ? 180_000 : 60_000,
+    }),
 
   diseaseCatalog: () => request<DiseaseCatalog>('/watermelon/disease-catalog'),
 

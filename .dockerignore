@@ -1,0 +1,25 @@
+# ไฟล์ที่ไม่ควรเข้าอิมเมจ — ลดขนาดและกันความลับรั่วเข้า image layer
+.git
+.github
+node_modules
+.firebase
+android
+ios
+samples
+uploads
+*.log
+
+# ความลับ: ต้องส่งเข้า Cloud Run ทาง --set-secrets หรือ --set-env-vars
+# ไม่ใช่ติดมากับอิมเมจ เพราะใครที่ pull อิมเมจได้จะอ่านได้ทั้งหมด
+.env
+.env.local
+
+# เอกสารและไฟล์ขนาดใหญ่ที่ runtime ไม่ใช้
+*.md
+bun.lock
+dataconnect
+tools
+
+# โมเดลและ dependency ของเซอร์วิส Python อยู่ในอิมเมจของตัวเอง
+# (fastapi_service/Dockerfile) ไม่ต้องติดมากับอิมเมจ Node
+fastapi_service

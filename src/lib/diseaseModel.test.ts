@@ -134,10 +134,27 @@ describe('catalogue coverage', () => {
     expect(modelCoverage('anthracnose')).not.toBeNull();
   });
 
-  it('accounts for all eight catalogue entries', () => {
-    expect(DISEASES).toHaveLength(8);
-    expect(OUT_OF_SCOPE_DISEASES).toHaveLength(5);
-    expect(DISEASES.filter((d) => modelCoverage(d.id))).toHaveLength(3);
+  it('accounts for every catalogue entry as either covered or out of scope', () => {
+    // เดิมเทสต์นี้ตรึงจำนวนไว้ที่ 8 รายการ ซึ่งพังทันทีที่แคตตาล็อกโตขึ้น
+    // ทั้งที่สิ่งที่ต้องรับประกันจริงไม่ใช่จำนวน แต่เป็นการที่ทุกรายการต้องถูกจัดว่า
+    // "โมเดลตรวจได้" หรือ "อยู่นอกขอบเขตโมเดล" อย่างใดอย่างหนึ่ง ไม่คร่อมและไม่ตกหล่น
+    // เพราะรายการที่ตกหล่นจะไม่ถูกแสดงว่าโมเดลตรวจไม่ได้ ผู้ใช้จึงอาจเข้าใจว่าตรวจได้
+    const covered = DISEASES.filter((d) => modelCoverage(d.id)).map((d) => d.id);
+    const outOfScope = OUT_OF_SCOPE_DISEASES.map((d) => d.id);
+
+    expect(covered.length + outOfScope.length).toBe(DISEASES.length);
+    expect(covered.filter((id) => outOfScope.includes(id))).toEqual([]);
+
+    // จำนวนรายการที่โมเดลตรวจได้ต้องเท่ากับจำนวนคลาสของโมเดลที่ไม่ใช่ Healthy
+    // ถ้าเพิ่มคลาสในโมเดลแล้วลืมผูกเข้ากับรหัสโรค ตัวเลขนี้จะไม่ตรงกัน
+    expect(covered).toHaveLength(MODEL_CLASSES.filter((c) => c !== 'Healthy').length);
+  });
+
+  it('keeps the catalogue larger than what the model can detect', () => {
+    // คลังความรู้อ้างอิงกว้างกว่าสิ่งที่โมเดลตรวจได้โดยเจตนา
+    // หน้าจอต้องแยกสองอย่างนี้ให้ผู้ใช้เห็น (ดู SupportedDiseases.tsx)
+    expect(OUT_OF_SCOPE_DISEASES.length).toBeGreaterThan(0);
+    expect(DISEASES.length).toBeGreaterThan(MODEL_CLASSES.length);
   });
 });
 
