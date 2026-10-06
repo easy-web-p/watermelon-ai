@@ -12,9 +12,12 @@
  * breaks a test instead of silently emptying someone's conversation.
  */
 
-import type { ApiAttachment, ApiMessage, DiseaseDetection, KnockAnalysis } from './api';
+import type { ApiAttachment, ApiConversation, ApiMessage, DiseaseDetection, DiseaseRecord, KnockAnalysis } from './api';
 
 export const CONVERSATION_STORAGE_KEY = 'watermelon.chat.conversation';
+export const CONVERSATION_LIST_STORAGE_KEY = 'watermelon.chat.conversations';
+export const MESSAGES_STORAGE_KEY_PREFIX = 'watermelon.chat.messages.';
+export const DISEASE_HISTORY_STORAGE_KEY = 'watermelon.disease.history';
 
 /** The feed's bubble shape, as `ChatAssistant` renders it. */
 export type FeedMessage = {
@@ -94,3 +97,100 @@ export function toFeedMessage(message: ApiMessage): FeedMessage {
     disease: message.diseaseDetection,
   };
 }
+
+/** Local-first persistence: read stored conversations. */
+export function getLocalConversations(): ApiConversation[] {
+  try {
+    const raw = window.localStorage.getItem(CONVERSATION_LIST_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Local-first persistence: save all conversations. */
+export function saveLocalConversations(convs: ApiConversation[]): void {
+  try {
+    window.localStorage.setItem(CONVERSATION_LIST_STORAGE_KEY, JSON.stringify(convs.slice(0, 50)));
+  } catch {
+    // Best effort on quota or disabled storage.
+  }
+}
+
+/** Local-first persistence: upsert single conversation into stored list. */
+export function saveLocalConversation(conv: ApiConversation): void {
+  try {
+    const current = getLocalConversations();
+    const existingIdx = current.findIndex((c) => c.id === conv.id);
+    let updated: ApiConversation[];
+    if (existingIdx >= 0) {
+      updated = [...current];
+      updated[existingIdx] = { ...updated[existingIdx], ...conv };
+    } else {
+      updated = [conv, ...current];
+    }
+    saveLocalConversations(updated);
+  } catch {
+    // Best effort.
+  }
+}
+
+/** Local-first persistence: remove conversation and its messages from storage. */
+export function deleteLocalConversation(id: string): void {
+  try {
+    const current = getLocalConversations().filter((c) => c.id !== id);
+    saveLocalConversations(current);
+    window.localStorage.removeItem(`${MESSAGES_STORAGE_KEY_PREFIX}${id}`);
+  } catch {
+    // Best effort.
+  }
+}
+
+/** Local-first persistence: read stored messages for a specific conversation. */
+export function getLocalMessages(conversationId: string): FeedMessage[] {
+  try {
+    const raw = window.localStorage.getItem(`${MESSAGES_STORAGE_KEY_PREFIX}${conversationId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Local-first persistence: store messages for a specific conversation. */
+export function saveLocalMessages(conversationId: string, messages: FeedMessage[]): void {
+  try {
+    // Do not persist the initial generic greeting bubble; it's dynamically added on render.
+    const toStore = messages.filter((m) => m.id !== 'greeting');
+    window.localStorage.setItem(`${MESSAGES_STORAGE_KEY_PREFIX}${conversationId}`, JSON.stringify(toStore.slice(-100)));
+  } catch {
+    // Best effort.
+  }
+}
+
+/** Local-first persistence: read stored disease diagnosis history. */
+export function getLocalDiseaseHistory(): DiseaseRecord[] {
+  try {
+    const raw = window.localStorage.getItem(DISEASE_HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Local-first persistence: save or prepend a disease scan diagnosis record. */
+export function saveLocalDiseaseRecord(record: DiseaseRecord): void {
+  try {
+    const current = getLocalDiseaseHistory();
+    const updated = [record, ...current.filter((r) => r.id !== record.id)];
+    window.localStorage.setItem(DISEASE_HISTORY_STORAGE_KEY, JSON.stringify(updated.slice(0, 50)));
+  } catch {
+    // Best effort.
+  }
+}
+

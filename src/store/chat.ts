@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { api, ApiError, NetworkError, type ApiConversation } from '../lib/api';
-import { rememberConversationId, restoreConversationId } from '../lib/chatHistory';
+import {
+  deleteLocalConversation,
+  getLocalConversations,
+  rememberConversationId,
+  restoreConversationId,
+  saveLocalConversation,
+  saveLocalConversations,
+} from '../lib/chatHistory';
 
 /**
  * `conv-${Date.now()}` collided whenever two threads were started inside the
@@ -25,7 +32,7 @@ export interface ChatStore {
 }
 
 export const useChat = create<ChatStore>((set, get) => ({
-  conversations: [],
+  conversations: getLocalConversations(),
   activeId: restoreConversationId(newConversationId),
   loading: false,
   error: null,
@@ -33,15 +40,30 @@ export const useChat = create<ChatStore>((set, get) => ({
   async loadConversations() {
     set({ loading: true });
     try {
-      const list = await api.listConversations();
-      set({ conversations: Array.isArray(list) ? list : [], loading: false, error: null });
+      const serverList = await api.listConversations();
+      const list = Array.isArray(serverList) ? serverList : [];
+      const local = getLocalConversations();
+      const map = new Map<string, ApiConversation>();
+      for (const item of local) {
+        map.set(item.id, item);
+      }
+      for (const item of list) {
+        map.set(item.id, item);
+      }
+      const merged = Array.from(map.values()).sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+      saveLocalConversations(merged);
+      set({ conversations: merged, loading: false, error: null });
     } catch (err) {
       const isOfflineOrPreview =
-        (err instanceof ApiError && err.status === 502) ||
+        (err instanceof ApiError && (err.status === 404 || err.status === 502)) ||
         err instanceof NetworkError;
 
+      const local = getLocalConversations();
       if (isOfflineOrPreview) {
         set({
+          conversations: local,
           loading: false,
           error: null,
         });
@@ -49,6 +71,7 @@ export const useChat = create<ChatStore>((set, get) => ({
       }
 
       set({
+        conversations: local,
         loading: false,
         error: err instanceof Error ? err.message : 'โหลดรายการสนทนาไม่สำเร็จ',
       });
@@ -72,11 +95,12 @@ export const useChat = create<ChatStore>((set, get) => ({
     // the caller's own handling. It must not be swallowed: a delete that
     // did not happen on the server would otherwise vanish from the list and
     // reappear on the next load.
+    deleteLocalConversation(id);
     try {
       await api.deleteConversation(id);
     } catch (err) {
       const isOfflineOrPreview =
-        (err instanceof ApiError && err.status === 502) ||
+        (err instanceof ApiError && (err.status === 404 || err.status === 502)) ||
         err instanceof NetworkError;
       if (!isOfflineOrPreview) {
         set({ error: err instanceof Error ? err.message : 'ลบการสนทนาไม่สำเร็จ' });
@@ -91,6 +115,7 @@ export const useChat = create<ChatStore>((set, get) => ({
   },
 
   upsertConversation(conv: ApiConversation) {
+    saveLocalConversation(conv);
     set((state) => {
       const exists = state.conversations.some((c) => c.id === conv.id);
       if (exists) {

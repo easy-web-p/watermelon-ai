@@ -1,8 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CONVERSATION_STORAGE_KEY,
+  deleteLocalConversation,
+  getLocalConversations,
+  getLocalDiseaseHistory,
+  getLocalMessages,
   rememberConversationId,
   restoreConversationId,
+  saveLocalConversation,
+  saveLocalDiseaseRecord,
+  saveLocalMessages,
   timeLabel,
   toFeedMessage,
 } from './chatHistory';
@@ -116,3 +123,63 @@ describe('timeLabel', () => {
     expect(timeLabel('')).toBe('');
   });
 });
+
+describe('local-first persistence', () => {
+  it('saves and reads local conversations', () => {
+    const conv1 = {
+      id: 'conv-test-1',
+      title: 'สนทนา 1',
+      lastMessage: 'ทดสอบ',
+      messageCount: 2,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isPinned: false,
+      chatMode: 'general',
+    };
+    saveLocalConversation(conv1);
+    const loaded = getLocalConversations();
+    expect(loaded.length).toBe(1);
+    expect(loaded[0].id).toBe('conv-test-1');
+
+    deleteLocalConversation('conv-test-1');
+    expect(getLocalConversations().length).toBe(0);
+  });
+
+  it('saves and reads local messages excluding greeting', () => {
+    const msgs = [
+      { id: 'greeting', role: 'assistant' as const, time: '10:00 น.', text: 'สวัสดี' },
+      { id: 'u-1', role: 'user' as const, time: '10:01 น.', text: 'แตงโมเป็นโรคอะไร' },
+      { id: 'a-1', role: 'assistant' as const, time: '10:01 น.', text: 'แอนแทรคโนสครับ' },
+    ];
+    saveLocalMessages('conv-test-1', msgs);
+    const loaded = getLocalMessages('conv-test-1');
+    expect(loaded.length).toBe(2);
+    expect(loaded[0].id).toBe('u-1');
+    expect(loaded[1].id).toBe('a-1');
+  });
+
+  it('saves and reads disease diagnosis records', () => {
+    const record = {
+      id: 'dis-1',
+      detectedAt: new Date().toISOString(),
+      farmId: 'farm-01',
+      notes: 'ทดสอบ',
+      status: 'diagnosed' as const,
+      disease_id: 'anthracnose',
+      thai_name: 'โรคแอนแทรคโนส',
+      confidence_percentage: 95,
+      severity: 'รุนแรงมาก',
+      severity_level: 5,
+      urgent_action: 'พ่นสารเคมี',
+      phi_days: 7,
+      model_version: 'v3',
+      from_verified_model: true,
+    };
+    saveLocalDiseaseRecord(record);
+    const history = getLocalDiseaseHistory();
+    expect(history.length).toBe(1);
+    expect(history[0].id).toBe('dis-1');
+    expect(history[0].thai_name).toBe('โรคแอนแทรคโนส');
+  });
+});
+

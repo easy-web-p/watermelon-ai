@@ -11,8 +11,10 @@ import { cn } from '../lib/cn';
 import { useRouter } from '../lib/router';
 import { ApiError, NetworkError, api, type ChatMode, type DiseaseDetection, type KnockAnalysis } from '../lib/api';
 import {
+  getLocalMessages,
   rememberConversationId,
   restoreConversationId,
+  saveLocalMessages,
   toFeedMessage,
 } from '../lib/chatHistory';
 import { compressImage, useKnockRecorder, validateImage } from '../lib/media';
@@ -278,20 +280,29 @@ export function ChatAssistant() {
 
     let cancelled = false;
     setRestoring(true);
-    setMessages([GREETING]);
+
+    // Local-first: immediately restore cached messages for zero latency and offline persistence
+    const localHistory = getLocalMessages(currentThread);
+    if (localHistory.length > 0) {
+      setMessages([GREETING, ...localHistory]);
+    } else {
+      setMessages([GREETING]);
+    }
 
     void (async () => {
       try {
         const history = await api.listMessages(currentThread);
         if (cancelled) return;
         if (!history || !Array.isArray(history) || !history.length) return;
-        setMessages([GREETING, ...history.map(toFeedMessage)]);
+        const feedMessages = history.map(toFeedMessage);
+        setMessages([GREETING, ...feedMessages]);
+        saveLocalMessages(currentThread, feedMessages);
       } catch (error) {
         if (cancelled) return;
         const isOfflineOrNotFound =
           (error instanceof ApiError && (error.status === 404 || error.status === 502)) ||
           error instanceof NetworkError;
-        if (!isOfflineOrNotFound) {
+        if (!isOfflineOrNotFound && localHistory.length === 0) {
           const detail = error instanceof Error ? error.message : 'ไม่ทราบสาเหตุ';
           setMessages([
             GREETING,
@@ -330,8 +341,41 @@ export function ChatAssistant() {
     feedEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, busy]);
 
-  const append = useCallback((message: Message) => {
-    setMessages((prev) => [...prev, message]);
+  const append = useCallback((message: Message, previewTitle?: string) => {
+    setMessages((prev) => {
+      const next = [...prev, message];
+      saveLocalMessages(conversationId.current, next);
+
+      const convId = conversationId.current;
+      const currentConvs = useChat.getState().conversations;
+      const existing = currentConvs.find((c) => c.id === convId);
+
+      const title =
+        existing?.title ||
+        previewTitle ||
+        (message.role === 'user'
+          ? message.text
+            ? message.text.slice(0, 30)
+            : message.imageUrl
+              ? 'ตรวจโรคจากภาพถ่าย'
+              : 'บันทึกเสียงเคาะ'
+          : 'บทสนทนากับน้องแตงโม AI');
+
+      useChat.getState().upsertConversation({
+        id: convId,
+        title: title + (title.length >= 30 ? '...' : ''),
+        lastMessage:
+          message.text?.slice(0, 40) ||
+          (message.imageUrl ? 'ส่งรูปภาพ' : message.audioUrl ? 'ส่งเสียงเคาะ' : 'ผลวิเคราะห์'),
+        messageCount: (existing?.messageCount ?? 0) + 1,
+        createdAt: existing?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isPinned: existing?.isPinned ?? false,
+        chatMode: existing?.chatMode ?? mode,
+      });
+
+      return next;
+    });
   }, []);
 
   /* ── Text / image send ───────────────────────────────────────────── */
@@ -388,7 +432,7 @@ export function ChatAssistant() {
         void useChat.getState().loadConversations();
       } catch (error) {
         const isOffline =
-          (error instanceof ApiError && error.status === 502) ||
+          (error instanceof ApiError && (error.status === 404 || error.status === 502 || error.status === 503)) ||
           error instanceof NetworkError;
 
         if (isOffline) {
@@ -495,7 +539,7 @@ export function ChatAssistant() {
       void useChat.getState().loadConversations();
     } catch (error) {
       const isOffline =
-        (error instanceof ApiError && error.status === 502) ||
+        (error instanceof ApiError && (error.status === 404 || error.status === 502 || error.status === 503)) ||
         error instanceof NetworkError;
       if (isOffline) {
         append({

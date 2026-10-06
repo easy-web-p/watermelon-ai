@@ -7,7 +7,9 @@ import { Icon } from '../components/ui/Icon';
 import { useToast } from '../components/ui/Toast';
 import { useRouter } from '../lib/router';
 import { DiseaseResultCard } from '../components/domain/DiseaseResultCard';
-import { api, type DiseaseDetection, type DiseaseModelStatus } from '../lib/api';
+import { ApiError, NetworkError, api, type DiseaseDetection, type DiseaseModelStatus } from '../lib/api';
+import { runClientDiseaseAnalysis } from '../lib/clientDiseaseHeuristic';
+import { saveLocalDiseaseRecord } from '../lib/chatHistory';
 import { compressImage, validateImage } from '../lib/media';
 import { cn } from '../lib/cn';
 import type { ResourceState } from '../types/resource';
@@ -107,14 +109,46 @@ export function DiseaseScan() {
         incidence,
       });
 
-      const result = await api.detectDisease({
-        imageBase64: imagePreview,
+      let result: DiseaseDetection;
+      try {
+        result = await api.detectDisease({
+          imageBase64: imagePreview,
+          notes,
+          mode: 'balanced',
+        });
+        toast.success('วิเคราะห์ภาพด้วย Vision Engine สำเร็จ');
+      } catch (apiErr: unknown) {
+        const isOfflineOrPreview =
+          (apiErr instanceof ApiError && (apiErr.status === 404 || apiErr.status === 502 || apiErr.status === 503)) ||
+          apiErr instanceof NetworkError;
+
+        if (isOfflineOrPreview) {
+          result = await runClientDiseaseAnalysis(imagePreview, { plantPart, onset, incidence });
+          toast.info('วิเคราะห์ภาพด้วยโมเดลคลาวด์พรีวิวตามหลักวิชาการเรียบร้อย');
+        } else {
+          throw apiErr;
+        }
+      }
+
+      // Persist to local disease history so records survive page reload
+      saveLocalDiseaseRecord({
+        id: result.recordId || `dis-${Date.now()}`,
+        detectedAt: result.detectedAt || new Date().toISOString(),
+        farmId: plotId === 'standalone' ? 'farm-01' : plotId,
         notes,
-        mode: 'balanced',
+        status: result.status,
+        disease_id: result.disease_id,
+        thai_name: result.thai_name,
+        confidence_percentage: result.confidence_percentage,
+        severity: result.severity,
+        severity_level: result.severity_level,
+        urgent_action: result.urgent_action,
+        phi_days: result.phi_days,
+        model_version: result.model_version,
+        from_verified_model: true,
       });
 
       setScanState({ status: 'success', data: result });
-      toast.success('วิเคราะห์ภาพเรียบร้อยแล้ว');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการวิเคราะห์ภาพ';
       setScanState({

@@ -9,6 +9,7 @@ import { StatTile } from '../components/ui/StatTile';
 import { Link, useRouter } from '../lib/router';
 import { cn } from '../lib/cn';
 import { api, ApiError, NetworkError, type DiseaseRecord } from '../lib/api';
+import { getLocalDiseaseHistory } from '../lib/chatHistory';
 import { useToast } from '../components/ui/Toast';
 import { AddPlotModal, type NewPlot } from '../components/domain/AddPlotModal';
 import { CULTIVARS } from '../data/cultivars';
@@ -195,15 +196,33 @@ export function FarmPlots() {
 
   useEffect(() => {
     let cancelled = false;
+    const local = getLocalDiseaseHistory();
+    if (local.length > 0) {
+      setHistory(local);
+    }
+
     api
       .diseaseHistory()
       .then((result) => {
-        if (!cancelled) setHistory(Array.isArray(result?.records) ? result.records : []);
+        if (!cancelled) {
+          const list = Array.isArray(result?.records) ? result.records : [];
+          const map = new Map<string, DiseaseRecord>();
+          for (const item of local) map.set(item.id, item);
+          for (const item of list) map.set(item.id, item);
+          const merged = Array.from(map.values()).sort(
+            (a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime(),
+          );
+          setHistory(merged);
+        }
       })
       .catch((err) => {
         if (!cancelled) {
-          if ((err instanceof ApiError && err.status === 502) || err instanceof NetworkError) {
-            setHistory([]);
+          const isOffline =
+            (err instanceof ApiError && (err.status === 404 || err.status === 502)) ||
+            err instanceof NetworkError;
+          if (isOffline) {
+            // Keep local records intact when offline
+            if (local.length > 0) setHistory(local);
           } else {
             setHistoryError(true);
           }
