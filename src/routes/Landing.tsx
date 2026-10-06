@@ -4,7 +4,6 @@ import { Card } from '../components/ui/Card';
 import { Badge, LiveBadge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
-import { Meter } from '../components/ui/Meter';
 import { MelonAvatar } from '../components/brand/Logo';
 import { useToast } from '../components/ui/Toast';
 import { Link, useRouter } from '../lib/router';
@@ -20,11 +19,9 @@ const STITCH_CASES = [
     subLabel: 'รอยจุดบุ๋มสีเข้ม',
     confidence: '98.6%',
     pathogen: 'Colletotrichum orbiculare',
-    severity: 'ระดับ 3 (ปานกลาง - ใบติดเชื้อ 35%)',
-    vitality: 62,
     treatment: 'ใช้สารกลุ่ม 11 (Azoxystrobin) อัตรา 10 มล. ต่อน้ำ 20 ลิตร ฉีดพ่นทุก 5-7 วัน สลับกับสารกลุ่ม 3 (Difenoconazole) เพื่อป้องกันเชื้อดื้อยา แนะนำเด็ดใบที่เป็นโรคเผาทำลายทันที',
-    reticleText: 'พื้นที่การแพร่กระจายสปอร์ 35%',
-    hudSensor: 'สเปกตรัมขยาย 10x กล้องจุลทรรศน์พืช',
+    reticleText: 'ตรวจพบลักษณะแผลแอนแทรคโนส',
+    hudSensor: 'วิเคราะห์ภาพถ่ายใบพืช',
     scanId: 'WM-2024-8841',
   },
   {
@@ -34,11 +31,9 @@ const STITCH_CASES = [
     subLabel: 'เหลืองเหลี่ยมเส้นใบ',
     confidence: '97.9%',
     pathogen: 'Pseudoperonospora cubensis',
-    severity: 'ระดับ 4 (รุนแรง - มีสปอร์ใต้ใบหนาแน่น 55%)',
-    vitality: 45,
     treatment: 'ใช้สารกลุ่ม 40 (Dimethomorph) 15 กรัม หรือสารกลุ่ม 28 (Propamocarb) สลับกับสารกลุ่ม M (Mancozeb) เพื่อป้องกันการระบาดลามทั้งแปลง งดการให้น้ำทางใบช่วงเย็น',
-    reticleText: 'ตรวจพบสปอร์เส้นใยสีเทา 55%',
-    hudSensor: 'อินฟราเรดตรวจจับความชื้นใบ 88%',
+    reticleText: 'ตรวจพบอาการราน้ำค้างตามเส้นใบ',
+    hudSensor: 'วิเคราะห์ภาพถ่ายใบพืช',
     scanId: 'WM-2024-9102',
   },
   {
@@ -48,11 +43,9 @@ const STITCH_CASES = [
     subLabel: 'ใบหด ย่น เสียรูป',
     confidence: '96.8%',
     pathogen: 'WMV / Potyvirus (พาหะ: เพลี้ยอ่อน Aphis gossypii)',
-    severity: 'ระดับ 3 (ยอดชะงัก - แพร่กระจาย 70%)',
-    vitality: 38,
     treatment: 'โรคจากไวรัสไม่สามารถรักษาด้วยยาเชื้อรา ต้องควบคุมแมลงพาหะด้วยสารกลุ่ม 4A (Imidacloprid) หรือสารชีวภาพน้ำมันสะเดา และถอนต้นแคระแกร็นเผาทำลายนอกแปลงทันที',
-    reticleText: 'การเสียรูปทรงใบและยอดด่าง 70%',
-    hudSensor: 'การคัดกรองโปรตีนไวรัสชีวภาพ',
+    reticleText: 'ตรวจพบอาการไวรัสยอดหงิกใบด่าง',
+    hudSensor: 'วิเคราะห์ภาพถ่ายใบพืช',
     scanId: 'WM-2024-9428',
   },
   {
@@ -62,11 +55,9 @@ const STITCH_CASES = [
     subLabel: 'เขียวสด ไร้รอยโรค',
     confidence: '99.2%',
     pathogen: 'ไม่พบเชื้อราหรือไวรัสก่อโรค (Negative)',
-    severity: 'ระดับ 0 (ปกติสมบูรณ์ 100%)',
-    vitality: 98,
     treatment: 'ต้นแตงโมมีคลอโรฟิลล์สมบูรณ์ แนะนำให้ปุ๋ยบำรุงธาตุรอง แคลเซียม-โบรอน อัตรา 10 ซีซี ต่อน้ำ 20 ลิตร และพ่นเชื้อราไตรโคเดอร์มาป้องกันเชื้อโรคเข้าทำลายทุก 10 วัน',
-    reticleText: 'เนื้อเยื่อสมบูรณ์ ไม่พบแผลโรค 98%',
-    hudSensor: 'ระดับคลอโรฟิลล์ SPAD 46.2 (ปกติ)',
+    reticleText: 'ใบสมบูรณ์แข็งแรง ไม่พบรอยโรค',
+    hudSensor: 'วิเคราะห์ภาพถ่ายใบพืช',
     scanId: 'WM-2024-9550',
   },
 ];
@@ -84,16 +75,6 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
   const displayName = customDiagnosis ? customDiagnosis.thai_name : currentCase.name;
   const displayPathogen = customDiagnosis ? customDiagnosis.scientific_name : currentCase.pathogen;
   const displayConfidence = customDiagnosis ? `${customDiagnosis.confidence_percentage}%` : currentCase.confidence;
-  const displaySeverity = customDiagnosis
-    ? customDiagnosis.status === 'diagnosed'
-      ? `ระดับ ${customDiagnosis.severity_level} (${customDiagnosis.severity})`
-      : customDiagnosis.severity
-    : currentCase.severity;
-  const displayVitality = customDiagnosis
-    ? customDiagnosis.status === 'unusable' || customDiagnosis.status === 'inconclusive'
-      ? null
-      : Math.max(15, 100 - customDiagnosis.severity_level * 18)
-    : currentCase.vitality;
   const displayTreatment = customDiagnosis
     ? [
         customDiagnosis.symptoms.join(' • '),
@@ -335,33 +316,6 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
                 {customDiagnosis ? `ความเชื่อมั่น ${displayConfidence}` : `ตัวอย่าง ${displayConfidence}`}
               </LiveBadge>
             </div>
-
-            <div className="grid grid-cols-2 gap-2 text-caption">
-              <div className="rounded-lg bg-surface-lowest p-2.5 shadow-sm">
-                <span className="text-outline">ระดับความรุนแรง</span>
-                <p className="font-bold text-primary mt-0.5">{displaySeverity}</p>
-              </div>
-              <div className="rounded-lg bg-surface-lowest p-2.5 shadow-sm">
-                <span className="text-outline">ดัชนีสุขภาพเนื้อเยื่อ</span>
-                <p className="font-bold text-secondary mt-0.5">
-                  {displayVitality !== null ? `Vitality: ${displayVitality}%` : '—'}
-                </p>
-              </div>
-            </div>
-
-            {displayVitality !== null && (
-              <div>
-                <div className="flex items-center justify-between text-caption text-on-surface-variant mb-1">
-                  <span>ความสมบูรณ์ของใบ</span>
-                  <span className="font-bold text-on-surface">{displayVitality}%</span>
-                </div>
-                <Meter
-                  value={displayVitality}
-                  tone={displayVitality > 70 ? 'secondary' : 'primary'}
-                  label="ดัชนีสุขภาพเนื้อเยื่อ"
-                />
-              </div>
-            )}
 
             <div className="rounded-lg bg-surface-lowest p-3.5 shadow-sm border border-flesh-border/50">
               <p className="flex items-center gap-1.5 text-label-md font-bold text-on-surface mb-1">
