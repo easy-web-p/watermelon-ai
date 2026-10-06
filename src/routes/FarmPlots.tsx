@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppShell, PageContainer, PageHeading } from '../components/layout/AppShell';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Badge, LiveBadge } from '../components/ui/Badge';
@@ -11,6 +11,7 @@ import { cn } from '../lib/cn';
 import { api, ApiError, NetworkError, type DiseaseRecord } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
 import { AddPlotModal, type NewPlot } from '../components/domain/AddPlotModal';
+import { CULTIVARS } from '../data/cultivars';
 
 type PlotHealth = 'ดีเยี่ยม' | 'เฝ้าระวัง' | 'ต้องดูแลด่วน';
 
@@ -139,17 +140,58 @@ export function FarmPlots() {
   const [extraPlots, setExtraPlots] = useState<NewPlot[]>([]);
   const toast = useToast();
 
-  const selected = PLOTS.find((plot) => plot.id === selectedId) ?? PLOTS[0];
-  const activePlots = PLOTS.filter((plot) => plot.stage !== 'เก็บเกี่ยวแล้ว');
+  const allPlots: Plot[] = useMemo(() => {
+    const extraMapped: Plot[] = extraPlots.map((p, idx) => {
+      const cultivar = CULTIVARS.find((c) => c.id === p.cultivarId);
+      const cultivarName = cultivar?.name ?? 'ตอร์ปิโด';
+      const totalDays = cultivar?.days ?? 65;
 
-  const baseAreaRai = PLOTS.reduce((sum, p) => sum + parsePlotRai(p.size), 0);
-  const extraAreaRai = extraPlots.reduce((sum, p) => sum + p.rai + p.ngan / 4 + p.wa / 400, 0);
-  const totalAreaRai = baseAreaRai + extraAreaRai;
+      const plantedDate = new Date(p.plantedOn);
+      const validPlanted = !Number.isNaN(plantedDate.getTime());
+      const now = Date.now();
+      const daysPassed = validPlanted ? Math.max(1, Math.floor((now - plantedDate.getTime()) / (1000 * 60 * 60 * 24))) : 1;
+      const day = Math.min(daysPassed, totalDays);
 
-  const baseYieldTons = PLOTS.reduce((sum, p) => sum + parsePlotYieldTons(p.expectedYield), 0);
-  // Average standard expected yield is approximately 3.7 tons per rai
-  const extraYieldTons = extraPlots.reduce((sum, p) => sum + (p.rai + p.ngan / 4 + p.wa / 400) * 3.7, 0);
-  const totalYieldTons = baseYieldTons + extraYieldTons;
+      let stage = 'ต้นกล้า & แตกใบ';
+      if (day >= totalDays) stage = 'เก็บเกี่ยวแล้ว';
+      else if (day >= 40) stage = 'ขยายผล & สะสมแป้ง';
+      else if (day >= 25) stage = 'ออกดอก & ผสมเกสร';
+      else if (day >= 12) stage = 'เลื้อยเถา';
+
+      const harvestDateObj = validPlanted ? new Date(plantedDate.getTime() + totalDays * 24 * 60 * 60 * 1000) : new Date();
+      const harvestStr = harvestDateObj.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+
+      const areaRai = p.rai + p.ngan / 4 + p.wa / 400;
+      const expectedYieldNum = (areaRai * 3.7).toFixed(1);
+
+      const sizeStr = `${p.rai} ไร่${p.ngan > 0 ? ` ${p.ngan} งาน` : ''}${p.wa > 0 ? ` ${p.wa} ตร.ว.` : ''}`;
+
+      return {
+        id: `custom-plot-${idx + 1}`,
+        name: p.name || `แปลงใหม่ ${idx + 1}`,
+        location: p.province ? `จ.${p.province}` : 'ไม่ระบุสถานที่',
+        size: sizeStr,
+        cultivar: cultivarName,
+        stage,
+        day,
+        totalDays,
+        health: 'ดีเยี่ยม' as PlotHealth,
+        moisture: 72,
+        brix: day >= 45 ? 11.2 : 0,
+        expectedYield: `${expectedYieldNum} ตัน`,
+        harvest: harvestStr,
+        alert: undefined,
+      };
+    });
+
+    return [...PLOTS, ...extraMapped];
+  }, [extraPlots]);
+
+  const selected = allPlots.find((plot) => plot.id === selectedId) ?? allPlots[0];
+  const activePlots = allPlots.filter((plot) => plot.stage !== 'เก็บเกี่ยวแล้ว');
+
+  const totalAreaRai = allPlots.reduce((sum, p) => sum + parsePlotRai(p.size), 0);
+  const totalYieldTons = allPlots.reduce((sum, p) => sum + parsePlotYieldTons(p.expectedYield), 0);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,11 +261,11 @@ export function FarmPlots() {
           />
           <StatTile
             label="แปลงที่กำลังเพาะปลูก"
-            value={`${activePlots.length + extraPlots.length}`}
+            value={`${activePlots.length}`}
             unit="แปลง"
             icon="potted_plant"
             tone="secondary"
-            footnote={`จากทั้งหมด ${PLOTS.length + extraPlots.length} แปลงที่ลงทะเบียน`}
+            footnote={`จากทั้งหมด ${allPlots.length} แปลงที่ลงทะเบียน`}
           />
           <StatTile
             label="ผลผลิตคาดการณ์รวมรอบนี้"
@@ -245,7 +287,7 @@ export function FarmPlots() {
 
         <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <div className="flex flex-col gap-3 lg:col-span-5">
-            {PLOTS.map((plot) => {
+            {allPlots.map((plot) => {
               const active = plot.id === selectedId;
               const tone = HEALTH_TONE[plot.health];
               const retired = plot.stage === 'เก็บเกี่ยวแล้ว';
@@ -483,7 +525,7 @@ export function FarmPlots() {
                   <p className="max-w-xs text-body-md text-on-surface-variant">
                     ยังไม่มีประวัติการสแกน — ถ่ายรูปใบที่สงสัยแล้วให้ AI วินิจฉัยครั้งแรกได้เลย
                   </p>
-                  <Button size="sm" onClick={() => (window.location.hash = '#/chat')}>
+                  <Button size="sm" onClick={() => navigate('/disease-scan')}>
                     <Icon name="photo_camera" size={16} />
                     เริ่มสแกน
                   </Button>
@@ -535,7 +577,7 @@ export function FarmPlots() {
               )}
 
               <Link
-                to="/chat"
+                to="/disease-scan"
                 className="mt-2 flex items-center justify-center gap-1.5 rounded-full bg-surface-low py-2.5 text-label-lg font-semibold text-primary transition-colors hover:bg-surface-container"
               >
                 <Icon name="photo_camera" size={18} />
@@ -548,7 +590,9 @@ export function FarmPlots() {
           open={addOpen}
           onClose={() => setAddOpen(false)}
           onCreate={(plot) => {
+            const nextIdx = extraPlots.length;
             setExtraPlots((prev) => [...prev, plot]);
+            setSelectedId(`custom-plot-${nextIdx + 1}`);
             toast.success(`เพิ่ม "${plot.name}" เรียบร้อยแล้ว`);
           }}
         />

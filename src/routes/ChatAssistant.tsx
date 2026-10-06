@@ -257,7 +257,7 @@ export function ChatAssistant() {
 
   const toast = useToast();
   const recorder = useKnockRecorder();
-  const { query, path } = useRouter();
+  const { query, path, navigate } = useRouter();
   const { initial } = useDisplayUser();
   const allowTraining = useAuth((state) => state.consent.improveModel);
   const [acousticOnline, setAcousticOnline] = useState<boolean | null>(null);
@@ -538,7 +538,11 @@ export function ChatAssistant() {
         <AssistantBar
           onTool={(tool) => {
             if (tool === 'chemicals') {
-              window.location.hash = '#/fertilizer';
+              navigate('/fertilizer');
+              return;
+            }
+            if (tool === 'disease') {
+              navigate('/disease-scan');
               return;
             }
             setMode('disease-diagnosis');

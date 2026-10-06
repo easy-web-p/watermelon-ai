@@ -109,7 +109,7 @@ export function FertilizerDirectory() {
               type="checkbox"
               checked={organicOnly}
               onChange={(event) => setOrganicOnly(event.target.checked)}
-              className="size-4 accent-[#1b6b44]"
+              className="size-4 accent-secondary"
             />
             <span className="text-label-md font-semibold text-on-surface">เฉพาะชีวภัณฑ์/อินทรีย์</span>
           </label>

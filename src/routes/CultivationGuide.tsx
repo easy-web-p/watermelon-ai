@@ -339,7 +339,7 @@ export function CultivationGuide() {
                           prev.map((item) => (item.id === task.id ? { ...item, done: !item.done } : item)),
                         )
                       }
-                      className="mt-0.5 size-5 shrink-0 accent-[#1b6b44]"
+                      className="mt-0.5 size-5 shrink-0 accent-secondary"
                     />
                     <span className="min-w-0 flex-1">
                       <span

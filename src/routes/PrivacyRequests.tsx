@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
 import { Field, TextInput, INPUT_CLASS } from '../components/ui/Field';
 import { useToast } from '../components/ui/Toast';
+import { useRouter } from '../lib/router';
 import { cn } from '../lib/cn';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
@@ -80,6 +81,7 @@ export function PrivacyRequests() {
   const [exporting, setExporting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const toast = useToast();
+  const { navigate } = useRouter();
   const user = useAuth((state) => state.user);
 
   async function handleExportData() {
@@ -302,7 +304,7 @@ export function PrivacyRequests() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => (window.location.hash = '#/privacy')}
+                  onClick={() => navigate('/privacy')}
                 >
                   <Icon name="policy" size={16} />
                   อ่านนโยบายความเป็นส่วนตัว
@@ -310,7 +312,7 @@ export function PrivacyRequests() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => (window.location.hash = '#/terms')}
+                  onClick={() => navigate('/terms')}
                 >
                   <Icon name="description" size={16} />
                   ข้อกำหนดการให้บริการ

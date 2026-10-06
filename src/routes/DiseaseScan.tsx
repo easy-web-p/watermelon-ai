@@ -5,6 +5,7 @@ import { Badge, LiveBadge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
 import { useToast } from '../components/ui/Toast';
+import { useRouter } from '../lib/router';
 import { DiseaseResultCard } from '../components/domain/DiseaseResultCard';
 import { api, type DiseaseDetection, type DiseaseModelStatus } from '../lib/api';
 import { compressImage, validateImage } from '../lib/media';
@@ -40,6 +41,7 @@ export function DiseaseScan() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const { navigate } = useRouter();
 
   useEffect(() => {
     let active = true;
@@ -150,7 +152,7 @@ export function DiseaseScan() {
           title="ตรวจโรคใบแตงโมโดยตรง"
           description="บันทึกภาพถ่ายและบริบทภาคสนามเพื่อประเมินความเสี่ยงโรคอย่างเป็นระบบ แยกประวัติรายแปลงชัดเจน"
           actions={
-            <Button variant="ghost" size="sm" onClick={() => (window.location.hash = '#/diseases')}>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/diseases')}>
               <Icon name="menu_book" size={18} />
               ดูคลังความรู้โรค
             </Button>
@@ -413,9 +415,11 @@ export function DiseaseScan() {
                       size="sm"
                       className="flex-1 justify-center"
                       onClick={() =>
-                        (window.location.hash = `#/chat?q=${encodeURIComponent(
-                          `ผลตรวจโรคใบแตงโม: ${scanState.data.thai_name} (${scanState.data.status}) ช่วยแนะนำแนวทางรักษาเพิ่มเติมหน่อยครับ`,
-                        )}`)
+                        navigate(
+                          `/chat?q=${encodeURIComponent(
+                            `ผลตรวจโรคใบแตงโม: ${scanState.data.thai_name} (${scanState.data.status}) ช่วยแนะนำแนวทางรักษาเพิ่มเติมหน่อยครับ`,
+                          )}`,
+                        )
                       }
                     >
                       <Icon name="chat" size={16} />

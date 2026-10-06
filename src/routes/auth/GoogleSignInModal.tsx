@@ -25,22 +25,8 @@ export function GoogleSignInModal({
     try {
       setError(null);
       await onSelectAccount({ email, name });
-    } catch {
-      useAuth.setState({
-        user: {
-          id: `usr-google-${Date.now()}`,
-          name: name || email.split('@')[0],
-          phone: '',
-          email,
-          role: 'user',
-          organization: 'Watermelon Smart Farm',
-        },
-        token: `token-google-${Date.now()}`,
-        status: 'idle',
-        error: null,
-      });
-      onClose();
-      window.location.hash = '#/chat';
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'เข้าสู่ระบบด้วย Google ไม่สำเร็จ');
     }
   };
 
@@ -55,22 +41,8 @@ export function GoogleSignInModal({
     try {
       setError(null);
       await onSelectAccount({ email, name });
-    } catch {
-      useAuth.setState({
-        user: {
-          id: `usr-google-${Date.now()}`,
-          name,
-          phone: '',
-          email,
-          role: 'user',
-          organization: 'Watermelon Smart Farm',
-        },
-        token: `token-google-${Date.now()}`,
-        status: 'idle',
-        error: null,
-      });
-      onClose();
-      window.location.hash = '#/chat';
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'เข้าสู่ระบบด้วย Google ไม่สำเร็จ');
     }
   };
 

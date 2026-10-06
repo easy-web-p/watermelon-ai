@@ -13,13 +13,11 @@ import { useRouter } from '../lib/router';
 import { printElement } from '../lib/export';
 import { MARKET_ROWS, PRICE_DAYS, PRICE_SERIES } from '../data/market';
 
-type Range = '7' | '15' | '30' | '90';
+type Range = '7' | '15';
 
 const RANGES = [
-  { value: '7', label: '7 วัน' },
-  { value: '15', label: '15 วัน' },
-  { value: '30', label: '1 เดือน' },
-  { value: '90', label: '3 เดือน' },
+  { value: '7', label: '7 วันล่าสุด' },
+  { value: '15', label: '15 วันล่าสุด' },
 ] as const;
 
 const TREND_TONE = {

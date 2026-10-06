@@ -93,6 +93,12 @@ export function Billing() {
               </Link>
               <button
                 type="button"
+                onClick={() => {
+                  const confirmed = window.confirm('ยืนยันการยกเลิกการต่ออายุแพ็กเกจอัตโนมัติ? คุณยังสามารถใช้งานฟีเจอร์ PRO ได้จนถึงสิ้นสุดรอบปัจจุบัน');
+                  if (confirmed) {
+                    toast.info('ยกเลิกการต่ออายุอัตโนมัติเรียบร้อยแล้ว คุณยังคงใช้งานได้จนถึงสิ้นสุดรอบบิล');
+                  }
+                }}
                 className="inline-flex h-10 cursor-pointer items-center justify-center rounded-full border border-on-primary/40 px-4 text-label-lg font-semibold transition-transform duration-150 ease-tactile active:scale-[0.96]"
               >
                 ยกเลิก

@@ -10,6 +10,7 @@ import { useToast } from '../components/ui/Toast';
 import { KnockResultCard } from '../components/domain/KnockResultCard';
 import { DiseaseResultCard } from '../components/domain/DiseaseResultCard';
 import { cn } from '../lib/cn';
+import { useRouter } from '../lib/router';
 import { Modal } from '../components/ui/Modal';
 import {
   api,
@@ -89,6 +90,7 @@ export function SweetnessScanner() {
 
   const fileInput = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const { navigate } = useRouter();
   const recorder = useKnockRecorder();
   const allowTraining = useAuth((state) => state.consent.improveModel);
 
@@ -251,7 +253,7 @@ export function SweetnessScanner() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => (window.location.hash = '#/disease-scan')}
+                onClick={() => navigate('/disease-scan')}
               >
                 <Icon name="biotech" size={18} />
                 ตรวจโรคใบด้วย AI เต็มระบบ
@@ -443,7 +445,7 @@ export function SweetnessScanner() {
                       variant="ghost"
                       size="sm"
                       className="flex-1 justify-center text-xs"
-                      onClick={() => (window.location.hash = '#/plots')}
+                      onClick={() => navigate('/plots')}
                     >
                       <Icon name="map" size={16} />
                       ดูแปลงของฉัน
@@ -459,11 +461,13 @@ export function SweetnessScanner() {
                       size="sm"
                       className="flex-1 justify-center text-xs"
                       onClick={() =>
-                        (window.location.hash = `#/chat?q=${encodeURIComponent(
-                          disease.status === 'diagnosed'
-                            ? `ผลสแกนใบ ${cultivar.name} พบ ${disease.thai_name} ขอคำแนะนำการใช้ยาเพิ่มเติมครับ`
-                            : `สแกนใบ ${cultivar.name} แล้ว AI ${disease.thai_name} (ความมั่นใจ ${disease.confidence_percentage}%) ช่วยแนะนำวิธีตรวจอาการด้วยตาเปล่าครับ`,
-                        )}`)
+                        navigate(
+                          `/chat?q=${encodeURIComponent(
+                            disease.status === 'diagnosed'
+                              ? `ผลสแกนใบ ${cultivar.name} พบ ${disease.thai_name} ขอคำแนะนำการใช้ยาเพิ่มเติมครับ`
+                              : `สแกนใบ ${cultivar.name} แล้ว AI ${disease.thai_name} (ความมั่นใจ ${disease.confidence_percentage}%) ช่วยแนะนำวิธีตรวจอาการด้วยตาเปล่าครับ`,
+                          )}`,
+                        )
                       }
                     >
                       <Icon name="chat" size={16} />
@@ -473,7 +477,7 @@ export function SweetnessScanner() {
                       variant="ghost"
                       size="sm"
                       className="flex-1 justify-center text-xs"
-                      onClick={() => (window.location.hash = '#/fertilizer')}
+                      onClick={() => navigate('/fertilizer')}
                     >
                       <Icon name="medication" size={16} />
                       คลังปุ๋ยยา

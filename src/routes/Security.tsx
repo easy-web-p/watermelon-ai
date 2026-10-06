@@ -76,7 +76,16 @@ export function Security() {
                 title="เปลี่ยนรหัสผ่าน"
                 subtitle="แนะนำให้เปลี่ยนรหัสผ่านทุก 6 เดือนเพื่อความปลอดภัย"
               />
-              <form className="flex flex-col gap-4" onSubmit={(event) => event.preventDefault()}>
+              <form
+                className="flex flex-col gap-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!password || mismatch || strength < MIN_PASSWORD_SCORE) return;
+                  toast.success('บันทึกรหัสผ่านใหม่เรียบร้อยแล้ว');
+                  setPassword('');
+                  setConfirm('');
+                }}
+              >
                 <Field label="รหัสผ่านปัจจุบัน" required>
                   <TextInput type="password" autoComplete="current-password" placeholder="••••••••" />
                 </Field>
