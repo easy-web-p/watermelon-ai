@@ -20,6 +20,7 @@ export const PRIMARY_NAV: readonly NavItem[] = [
 
 export const SECONDARY_NAV: readonly NavItem[] = [
   { path: '/diseases', label: 'โรคแตงโมที่รองรับ', icon: 'coronavirus', tone: 'secondary' },
+  { path: '/evaluation', label: 'ผลการวัดผลโมเดล AI', icon: 'insights', tone: 'primary' },
   { path: '/plots', label: 'จัดการแปลงเพาะปลูก', icon: 'map', tone: 'tertiary' },
   { path: '/alerts', label: 'แจ้งเตือนผ่าน LINE', icon: 'notifications_active', tone: 'secondary' },
 ] as const;
@@ -38,6 +39,7 @@ export const MARKETING_NAV: readonly { path: string; label: string }[] = [
   { path: '/', label: 'หน้าแรก' },
   { path: '/chat', label: 'แชท' },
   { path: '/disease-scan', label: 'ตรวจโรคใบด้วย AI' },
+  { path: '/evaluation', label: 'การวัดผล AI' },
   { path: '/diseases', label: 'โรคแตงโมที่รองรับ' },
   { path: '/about', label: 'ข้อมูลเกี่ยวกับเรา' },
   { path: '/pricing', label: 'ราคา' },

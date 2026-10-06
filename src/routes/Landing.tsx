@@ -317,6 +317,26 @@ function ScanDemo({ navigate }: { navigate: (to: string) => void }) {
               </LiveBadge>
             </div>
 
+            {/* AI Evaluation Metrics Indicators */}
+            <div className="grid grid-cols-2 gap-2 text-caption">
+              <div className="rounded-lg bg-surface-lowest p-2.5 shadow-sm border border-outline-variant/20">
+                <span className="text-on-surface-variant flex items-center gap-1 text-[11px]">
+                  <Icon name="verified_user" size={13} className="text-secondary" />
+                  การคัดกรอง LeafCheck
+                </span>
+                <p className="font-bold text-secondary mt-0.5 text-xs">ผ่านเกณฑ์ (ใบแตงโมแท้)</p>
+              </div>
+              <div className="rounded-lg bg-surface-lowest p-2.5 shadow-sm border border-outline-variant/20">
+                <span className="text-on-surface-variant flex items-center gap-1 text-[11px]">
+                  <Icon name="insights" size={13} className="text-primary" />
+                  การสอบเทียบความมั่นใจ
+                </span>
+                <Link to="/evaluation" className="font-bold text-primary mt-0.5 text-xs hover:underline flex items-center gap-0.5">
+                  ECE 0.042 (ดูผลวัด →)
+                </Link>
+              </div>
+            </div>
+
             <div className="rounded-lg bg-surface-lowest p-3.5 shadow-sm border border-flesh-border/50">
               <p className="flex items-center gap-1.5 text-label-md font-bold text-on-surface mb-1">
                 <Icon name="medication" size={16} className="text-primary" />

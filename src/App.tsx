@@ -49,6 +49,9 @@ const DiseaseScan = lazy(() => import('./routes/DiseaseScan').then((m) => ({ def
 const PrivacyRequests = lazy(() =>
   import('./routes/PrivacyRequests').then((m) => ({ default: m.PrivacyRequests })),
 );
+const AiEvaluation = lazy(() =>
+  import('./routes/AiEvaluation').then((m) => ({ default: m.AiEvaluation })),
+);
 
 /** Static routes. The dynamic `/status/:code` is matched separately. */
 const ROUTES: Record<string, ComponentType> = {
@@ -71,6 +74,8 @@ const ROUTES: Record<string, ComponentType> = {
   '/alerts': LineAlerts,
   '/about': About,
   '/research': Research,
+  '/evaluation': AiEvaluation,
+  '/ai-metrics': AiEvaluation,
   '/api-docs': ApiDocs,
   '/data-dispute': DataDispute,
   '/support': Support,
@@ -101,6 +106,9 @@ function RouteFallback() {
  */
 const PUBLIC_ROUTES = new Set([
   '/',
+  '/evaluation',
+  '/ai-metrics',
+  '/research',
   '/signin',
   '/login',
   '/register',

@@ -240,10 +240,20 @@ export function Research() {
         </div>
 
         <Card className="mt-8">
-          <h2 className="mb-4 flex items-center gap-2 text-headline-sm font-bold text-on-surface">
-            <Icon name="verified" size={22} className="text-secondary" />
-            ความแม่นยำของโมเดลตามกลุ่มโรค
-          </h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 text-headline-sm font-bold text-on-surface">
+              <Icon name="verified" size={22} className="text-secondary" />
+              ความแม่นยำของโมเดลตามกลุ่มโรค
+            </h2>
+            <Button
+              variant="tonal"
+              size="sm"
+              onClick={() => navigate('/evaluation')}
+            >
+              <Icon name="insights" size={16} />
+              ดูแดชบอร์ดวัดผลเชิงลึก (Confusion Matrix & ECE)
+            </Button>
+          </div>
           <div className="flex flex-col gap-3">
             {[
               { name: 'ราแป้ง (Powdery Mildew)', value: 97.1 },
