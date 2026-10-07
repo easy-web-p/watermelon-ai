@@ -96,29 +96,10 @@ function RichText({ text }: { text: string }) {
 }
 
 function AssistantBar({ onTool }: { onTool: (tool: 'photo' | 'disease' | 'chemicals') => void }) {
-  const { navigate } = useRouter();
-
-  function handleBack() {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      navigate('/');
-    }
-  }
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/30 bg-surface-lowest/80 px-4 py-3 backdrop-blur-md sm:px-6">
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-        <button
-          type="button"
-          onClick={handleBack}
-          aria-label="ย้อนกลับ"
-          title="ย้อนกลับ"
-          className="flex items-center gap-1 rounded-full bg-surface-container-low px-2.5 py-1.5 text-label-md font-semibold text-on-surface-variant transition-all duration-150 hover:bg-surface-container hover:text-on-surface active:scale-95 cursor-pointer shrink-0"
-        >
-          <Icon name="arrow_back" size={18} />
-          <span className="hidden sm:inline">ย้อนกลับ</span>
-        </button>
         <span className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10">
           <MelonAvatar size={28} />
           <span className="absolute right-0 bottom-0 size-3 animate-pulse rounded-full bg-secondary ring-2 ring-surface-lowest" />

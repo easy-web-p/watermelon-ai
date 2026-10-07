@@ -4,6 +4,7 @@ import { RouterProvider, useRouter, useScrollReset } from './lib/router';
 import { LogoMark } from './components/brand/Logo';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/ui/Toast';
+import { FloatingHistoryBackButton } from './components/layout/FloatingHistoryBackButton';
 
 /**
  * Every screen is code-split: farmers often open this on mobile data in the
@@ -123,6 +124,7 @@ export default function App() {
           <Suspense fallback={<RouteFallback />}>
             <Screen />
           </Suspense>
+          <FloatingHistoryBackButton />
         </RouterProvider>
       </ToastProvider>
     </ErrorBoundary>

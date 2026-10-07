@@ -37,18 +37,6 @@ export function MarketingShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-50 bg-surface-lowest/85 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 shrink-0">
-            {path !== '/' && (
-              <button
-                type="button"
-                onClick={handleBack}
-                aria-label="ย้อนกลับ"
-                title="ย้อนกลับ"
-                className="flex items-center gap-1 rounded-full bg-surface-container-low px-3 py-1.5 text-label-md font-semibold text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all duration-150 active:scale-95 cursor-pointer"
-              >
-                <Icon name="arrow_back" size={18} />
-                <span className="hidden sm:inline">ย้อนกลับ</span>
-              </button>
-            )}
             <Link to="/" aria-label="Watermelon AI หน้าแรก" className="shrink-0">
               <Logo />
             </Link>
@@ -322,16 +310,6 @@ export function AuthShell({
       <header className="sticky top-0 z-50 w-full border-b border-outline-variant/20 bg-surface/85 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.03)]">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleBack}
-              aria-label="ย้อนกลับ"
-              title="ย้อนกลับ"
-              className="flex items-center gap-1 rounded-full bg-surface-container-low px-3 py-1.5 text-label-md font-semibold text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all duration-150 active:scale-95 cursor-pointer"
-            >
-              <Icon name="arrow_back" size={18} />
-              <span className="hidden sm:inline">ย้อนกลับ</span>
-            </button>
             <Link to="/" aria-label="Watermelon AI หน้าแรก" className="flex items-center gap-2">
               <Logo />
             </Link>

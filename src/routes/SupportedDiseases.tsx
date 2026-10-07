@@ -156,21 +156,6 @@ export function SupportedDiseases() {
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-12">
           <div className="max-w-3xl">
             <div className="mb-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.history.length > 1) {
-                    window.history.back();
-                  } else {
-                    navigate('/');
-                  }
-                }}
-                aria-label="ย้อนกลับ"
-                className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-surface-lowest px-2.5 py-1 text-label-sm font-semibold text-on-surface-variant shadow-xs transition-colors hover:bg-surface-container"
-              >
-                <Icon name="arrow_back" size={16} />
-                <span>ย้อนกลับ</span>
-              </button>
               <Badge tone="secondary">
                 <Icon name="coronavirus" size={14} />
                 คลังความรู้โรคแตงโม

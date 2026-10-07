@@ -81,17 +81,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Icon name="menu" size={22} />
             </button>
 
-            <button
-              type="button"
-              onClick={handleBack}
-              aria-label="ย้อนกลับ"
-              title="ย้อนกลับ"
-              className="flex items-center gap-1 rounded-full bg-surface-container-low px-2.5 py-1.5 text-label-md font-semibold text-on-surface-variant transition-all duration-150 hover:bg-surface-container hover:text-on-surface active:scale-95 cursor-pointer shrink-0"
-            >
-              <Icon name="arrow_back" size={18} />
-              <span className="hidden sm:inline">ย้อนกลับ</span>
-            </button>
-
             <Link to="/chat" className="lg:hidden" aria-label="Watermelon AI">
               <LogoMark size={28} />
             </Link>
