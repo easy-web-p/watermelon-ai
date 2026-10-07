@@ -46,13 +46,6 @@
     ],
     "rewrites": [
       {
-        "source": "/api/**",
-        "run": {
-          "serviceId": "watermelon-api",
-          "region": "asia-southeast1"
-        }
-      },
-      {
         "source": "**",
         "destination": "/index.html"
       }
