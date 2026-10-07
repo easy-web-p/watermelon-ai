@@ -11,6 +11,13 @@ The one kind of Thai text it does produce is photography guidance
 how readable a photo is, is a property of the image, which is this service's
 subject. What the photo *means* for a crop is not.
 
+``acoustic.py`` adds knock-sound measurement under the same rule. A resonance
+frequency, a damping time and a stiffness index are properties of the signal,
+so they belong here. A Brix figure or a "ripe / not ripe" verdict is what the
+signal *means* for the fruit, needs a calibration nobody has fitted yet, and
+is therefore never returned — the endpoint reports the measurement and says
+plainly what it cannot conclude from it.
+
 Inference runs on ONNX Runtime, not PyTorch. ``export_onnx.py`` produces
 ``model.onnx`` once from the training checkpoint and verifies it against
 PyTorch before writing it; after that the serving path needs neither torch nor
@@ -48,6 +55,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
+import acoustic
 import engines
 import inference
 from model import CLASSES, IMAGE_SIZE, preprocess, softmax
@@ -86,6 +94,33 @@ class Base64PredictRequest(BaseModel):
     engine: str | None = None
     candidates: list[DiseaseCandidate] | None = None
     userContext: str = ""
+
+
+class AcousticRequest(BaseModel):
+    """เสียงเคาะหนึ่งคลิป ส่งมาเป็น PCM float32 ที่เบราว์เซอร์ถอดรหัสแล้ว
+
+    ทำไมไม่รับไฟล์ webm ตรง ๆ: การถอดรหัส webm/opus ต้องมี ffmpeg ในอิมเมจ
+    ขณะที่ ``AudioContext.decodeAudioData`` ของเบราว์เซอร์ทำได้ฟรีอยู่แล้ว
+    การถอดรหัสฝั่งผู้เรียกจึงประหยัดทั้งขนาดอิมเมจและเวลา
+
+    ``wavBase64`` มีไว้สำหรับการทดสอบและเครื่องมือบรรทัดคำสั่ง ซึ่งสร้าง WAV
+    ได้ง่ายกว่า PCM เปล่า
+    """
+
+    pcmBase64: str | None = None
+    sampleRate: int | None = None
+    wavBase64: str | None = None
+    # น้ำหนักผลเป็นกิโลกรัม ไม่บังคับ แต่ถ้าไม่มีจะคำนวณดัชนีความแข็งไม่ได้
+    massKg: float | None = Field(default=None, gt=0, le=30)
+
+
+class AcousticBatchEntry(BaseModel):
+    id: str = Field(min_length=1)
+    stiffness_index: float | None = None
+
+
+class AcousticBatchRequest(BaseModel):
+    entries: list[AcousticBatchEntry] = Field(min_length=1, max_length=200)
 
 
 def _resolve_engine(requested: str | None) -> engines.Engine:
@@ -233,6 +268,13 @@ def health():
         # Reported so a caller can tell whether `confidence` is a probability
         # or a raw softmax score, which changes how it should be worded.
         "calibration": calibration.to_dict(),
+        # การวิเคราะห์เสียงเคาะพร้อมใช้เสมอ เพราะเป็นการประมวลผลสัญญาณ
+        # ไม่ต้องโหลดโมเดลและไม่ต้องมีคีย์ รายละเอียดอยู่ที่ /acoustic/info
+        "acoustic": {
+            "available": True,
+            "costs_money": False,
+            "reports_brix": False,
+        },
         "aggregation": {
             "tile_suspicion_threshold": inference.TILE_SUSPICION,
             "tile_min_tissue_fraction": inference.TILE_MIN_TISSUE,
@@ -382,3 +424,71 @@ async def predict_raw(file: UploadFile = File(...)):
         "engine_version": "raw",
         "note": "คะแนน softmax ดิบจากภาพเดียวมุมเดียว ไม่ผ่านเครื่องยนต์รวมผล ใช้เพื่อเปรียบเทียบเท่านั้น",
     }
+
+
+# --------------------------------------------------------------- เสียงเคาะผล
+#
+# เส้นทางนี้ไม่ใช้โมเดลและไม่เรียกบริการภายนอก จึงไม่มีค่าใช้จ่ายต่อการเรียก
+# และไม่ต้องตั้งคีย์ใด ๆ ดูขอบเขตที่ ``acoustic.py`` อธิบายไว้ว่าวัดอะไร
+# และตั้งใจไม่สรุปอะไร
+
+
+@app.get("/acoustic/info")
+def acoustic_info():
+    """สิ่งที่การวิเคราะห์เสียงทำและไม่ทำ ให้หน้าจอแสดงก่อนผู้ใช้เริ่มอัด
+
+    มีเอ็นด์พอยต์นี้เพราะหน้าจอต้องบอกล่วงหน้าได้ว่าจะไม่ได้ค่า Brix
+    ถ้าผู้ใช้อัดเสียงมาแล้วค่อยรู้ จะรู้สึกว่าระบบพัง ทั้งที่เป็นข้อจำกัด
+    ที่ประกาศไว้ตั้งแต่ต้น
+    """
+    return acoustic.service_info()
+
+
+@app.post("/acoustic")
+def acoustic_analyse(payload: AcousticRequest):
+    """วัดสมบัติของเสียงเคาะหนึ่งคลิป
+
+    422 เมื่อสัญญาณวัดไม่ได้ (เงียบ ล้น เสียงรบกวนกลบ หรือไม่ใช่เสียงเคาะผล)
+    ซึ่งเป็นสิ่งที่ผู้ใช้แก้ได้ด้วยการอัดใหม่ ข้อความบอกวิธีแก้ไว้ด้วย
+    ระบบไม่คืนตัวเลขที่คำนวณจากเสียงรบกวน เพราะผู้ใช้แยกไม่ออกจากการวัดจริง
+    """
+    try:
+        if payload.pcmBase64 is not None:
+            if not payload.sampleRate:
+                raise acoustic.AcousticUnmeasurable(
+                    "ส่ง pcmBase64 มาต้องส่ง sampleRate มาด้วย ระบบไม่เดาอัตราสุ่ม "
+                    "เพราะอัตราสุ่มที่ผิดทำให้ความถี่ที่วัดได้ผิดตามสัดส่วน"
+                )
+            signal, rate = acoustic.decode_pcm_base64(payload.pcmBase64, payload.sampleRate)
+        elif payload.wavBase64 is not None:
+            raw = payload.wavBase64
+            if raw.startswith("data:"):
+                _, _, raw = raw.partition(",")
+            try:
+                decoded = base64.b64decode(raw, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise acoustic.AcousticUnmeasurable(f"ถอดรหัส base64 ไม่สำเร็จ: {exc}") from exc
+            signal, rate = acoustic.decode_wav(decoded)
+        else:
+            raise acoustic.AcousticUnmeasurable("ต้องส่ง pcmBase64 (พร้อม sampleRate) หรือ wavBase64")
+
+        reading = acoustic.analyse(signal, rate, payload.massKg)
+    except acoustic.AcousticUnmeasurable as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return {
+        "ok": True,
+        "method": "fft-resonance",
+        "costs_money": False,
+        "reading": reading.to_dict(),
+    }
+
+
+@app.post("/acoustic/compare")
+def acoustic_compare(payload: AcousticBatchRequest):
+    """จัดอันดับผลหลายลูกในล็อตเดียวกันจากดัชนีความแข็ง
+
+    นี่คือผลลัพธ์ที่ใช้ได้จริงโดยไม่ต้องมีการปรับเทียบ เพราะการเทียบกันเอง
+    ไม่ต้องรู้ค่าสัมบูรณ์ ต้องรู้แค่ว่าวัดด้วยวิธีเดียวกัน
+    """
+    return acoustic.compare_batch([entry.model_dump() for entry in payload.entries])

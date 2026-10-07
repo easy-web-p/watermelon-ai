@@ -269,7 +269,7 @@ export function SupportedDiseases() {
             </div>
           </div>
           <Link
-            to="/chat"
+            to="/disease-scan"
             className="inline-flex h-11 items-center gap-2 rounded-full bg-on-primary px-5 text-label-lg font-semibold text-primary transition-transform duration-150 ease-tactile active:scale-[0.96]"
           >
             <Icon name="document_scanner" size={18} />

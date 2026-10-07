@@ -123,7 +123,7 @@ export function About() {
                     ดูรายงานผลวิจัยและ Dataset
                   </Link>
                   <Link
-                    to="/chat"
+                    to="/disease-scan"
                     className="inline-flex h-11 items-center gap-2 rounded-full border border-primary/25 px-5 text-label-lg font-semibold text-on-surface hover:bg-surface-low transition-all"
                   >
                     <Icon name="photo_camera" size={18} className="text-primary" />
