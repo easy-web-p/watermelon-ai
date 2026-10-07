@@ -293,21 +293,29 @@ def _wide9_paths(raw: str, fallback: Path) -> list[Path]:
     return [Path(part.strip()) for part in text.split(",") if part.strip()]
 
 
-def _wide9_tta_enabled() -> bool:
-    """WIDE9_TTA ค่าเริ่มต้นเป็น "เปิด" ต่างจาก _env_flag ที่ค่าเริ่มต้นเป็นปิด
+def _wide9_tta_enabled(default: bool = True) -> bool:
+    """คืนค่า TTA ตาม environment หรือค่าที่ metadata ของโมเดลวัดไว้
 
-    _env_flag ตั้งค่าเริ่มต้นเป็นปิดเพราะมันคุม engine ที่เสียเงิน ที่นี่ไม่มี
-    ค่าใช้จ่าย มีแต่เวลา CPU และวัดแล้วว่าเปิดไว้แม่นกว่ากับโมเดลที่เสิร์ฟอยู่
-    (0.7707 เทียบ 0.7452) จึงให้ค่าเริ่มต้นเป็นเปิด และปิดได้ด้วย WIDE9_TTA=0
+    การเพิ่ม TTA โดยไม่เคยวัดกับน้ำหนักชุดนั้นไม่ใช่การเพิ่มความแม่นยำฟรี: ensemble
+    ต้นทางวัดแล้วว่าควรปิด แต่ wide9 ตัวเดียววัดแล้วว่าควรเปิด จึงให้ labels.json
+    บอกค่าเริ่มต้นได้ และผู้ดูแลยัง override ผ่าน WIDE9_TTA ได้เสมอ.
     """
     raw = (os.getenv("WIDE9_TTA") or "").strip().lower()
     if not raw:
-        return True
+        return default
     return raw in {"1", "true", "yes", "on"}
 
 
-def _build_wide9(model_paths: Path | Sequence[Path]) -> Engine:
-    """โมเดล 9 คลาสจากโปรเจกต์วินิจฉัยโรคแตงโม
+def _build_wide9(
+    model_paths: Path | Sequence[Path],
+    *,
+    engine_name: str = "wide9",
+    title_prefix_th: str = "โมเดลกว้าง",
+    description_th: str | None = None,
+    good_for_th: Sequence[str] | None = None,
+    extra_limits_th: Sequence[str] = (),
+) -> Engine:
+    """สร้าง engine สำหรับโมเดล ONNX ที่ใช้ฉลากโรคแตงโมร่วมกัน
 
     ไม่นำกฎรวมผลและค่า temperature ของ legacy4 มาใช้ เพราะทั้งสองอย่างถูก fit
     มากับโมเดลนั้นและดัชนีคลาส Healthy ของมัน การใช้ผิดโมเดลทำให้ตัวเลขผิด
@@ -355,7 +363,7 @@ def _build_wide9(model_paths: Path | Sequence[Path]) -> Engine:
         output_shape = session.get_outputs()[0].shape
         if output_shape[-1] not in (len(classes), None, "classes"):
             raise RuntimeError(
-                f"wide9 ({model_path.name}) ให้ผลลัพธ์ {output_shape} "
+                f"{engine_name} ({model_path.name}) ให้ผลลัพธ์ {output_shape} "
                 f"ไม่ตรงกับ {len(classes)} คลาสใน {labels_path.name}"
             )
         # temperature ที่ fit ไว้บนชุดตรวจสอบของโมเดลตัวนั้น หารกับ logits ก่อน softmax
@@ -366,14 +374,17 @@ def _build_wide9(model_paths: Path | Sequence[Path]) -> Engine:
         sessions.append((session, input_name, output_name, temperature, digest))
 
     if base is None or not sessions:
-        raise RuntimeError("ไม่มีไฟล์โมเดล wide9 ที่โหลดได้")
+        raise RuntimeError(f"ไม่มีไฟล์โมเดล {engine_name} ที่โหลดได้")
 
     arch = str(base.get("arch", "onnx"))
     version = f"{arch}@{'+'.join(d for *_rest, d in sessions)}"
     proxy = sorted(c for c, t in tiers.items() if t == "symptom_proxy")
-    tta_enabled = _wide9_tta_enabled()
+    tta_enabled = _wide9_tta_enabled(bool(base.get("serving_tta", False)))
     measured_accuracy = base.get("val_accuracy")
     measured_ece = base.get("val_ece")
+    has_temperature_calibration = isinstance(base.get("temperature"), (int, float)) and float(
+        base["temperature"]
+    ) > 0
 
     def predict(image: Image.Image, mode: str, _context: dict[str, Any]) -> dict[str, Any]:
         started = time.perf_counter()
@@ -422,25 +433,32 @@ def _build_wide9(model_paths: Path | Sequence[Path]) -> Engine:
             "raw_scores": {cls: round(float(p), 6) for cls, p in zip(classes, probs)},
             "model_version": version,
             "note": note,
-            "engine": "wide9",
-            "engine_version": "wide9-2.0.0",
+            "engine": engine_name,
+            "engine_version": f"{engine_name}-1.0.0",
             "mode": mode,
             "abstain": not quality.usable,
             "quality": quality.to_dict(),
             "lesions": lesions.to_dict(),
             "calibration": {
-                # ปรับ temperature แล้วจริง แต่ปรับบนภาพพืชอื่น ไม่ใช่ภาพแตงโม
-                # จึงยังไม่เรียกตัวเลขนี้ว่าความน่าจะเป็นของแตงโม ดู ``calibrated`` ด้านล่าง
+                # แม้ปรับ temperature แล้ว ก็ยังไม่เรียกตัวเลขนี้ว่าความน่าจะเป็น
+                # บนแปลงแตงโม เพราะชุดปรับเทียบมาจากคนละโดเมน
                 "temperature": [round(t, 4) for *_r, t, _d in sessions]
                 if len(sessions) > 1
                 else round(sessions[0][3], 4),
-                "fitted": True,
-                "source": "temperature scaling บนชุดตรวจสอบของชุดข้อมูลที่ใช้เทรน",
+                "fitted": has_temperature_calibration,
+                "source": (
+                    "temperature scaling บนชุดตรวจสอบของชุดข้อมูลที่ใช้เทรน"
+                    if has_temperature_calibration
+                    else "metadata ของโมเดลนี้ไม่มีค่า temperature calibration"
+                ),
                 "measured_ece": measured_ece,
                 "note": (
                     "ปรับ temperature บนชุดตรวจสอบแล้ว แต่ชุดนั้นเป็นภาพพืชอื่น "
                     "ไม่ใช่ภาพแตงโม ตัวเลขจึงใกล้ความถูกต้องจริงกว่า softmax ดิบ "
                     "แต่ยังอ้างเป็นความน่าจะเป็นบนแปลงแตงโมไม่ได้"
+                    if has_temperature_calibration
+                    else "ไม่มีข้อมูลว่าโมเดลรุ่นนี้ผ่าน temperature calibration; "
+                    "คะแนนยังเป็น softmax ดิบและไม่ใช่ความน่าจะเป็นบนแปลงแตงโม"
                 ),
             },
             "class_provenance": {
@@ -464,17 +482,22 @@ def _build_wide9(model_paths: Path | Sequence[Path]) -> Engine:
     )
 
     return Engine(
-        name="wide9",
-        title_th="โมเดลกว้าง 9 คลาส",
+        name=engine_name,
+        # นับจากไฟล์ labels จริง ไม่ฮาร์ดโค้ด เพราะจำนวนคลาสเปลี่ยนตามรุ่นของโมเดล
+        # ที่คัดลอกมาวาง ถ้าเขียนตัวเลขไว้ หน้าจอจะบอกจำนวนคลาสผิดทันทีที่เปลี่ยนน้ำหนัก
+        title_th=f"{title_prefix_th} {len(classes)} คลาส",
         classes=classes,
         image_size=size,
         model_version=version,
-        description_th=(
+        description_th=description_th
+        or (
             "ครอบคลุมโรคมากกว่าโมเดลหลัก แต่บางคลาสเทรนจากภาพโรคของพืชอื่น "
             "ที่เชื้อเดียวกันหรืออาการคล้ายกัน เพราะยังไม่มีชุดภาพแตงโมที่ใหญ่พอ "
             "ความมั่นใจของคลาสเหล่านั้นถูกลดน้ำหนักตามที่มาและตาม recall จริงแล้ว"
         ),
-        good_for_th=[
+        good_for_th=list(good_for_th)
+        if good_for_th is not None
+        else [
             "คัดกรองกว้างเมื่อยังไม่รู้ว่าอาการเข้าข่ายโรคกลุ่มใด",
             "ตรวจราแป้ง ซึ่งเป็นคลาสที่เชื้อตรงกับแตงโมและวัด recall ได้สูงสุด",
         ],
@@ -486,8 +509,10 @@ def _build_wide9(model_paths: Path | Sequence[Path]) -> Engine:
             "คลาสที่เทรนจากภาพตัวแทนข้ามพืช (" + ", ".join(proxy) + ") เชื่อถือได้น้อยที่สุด"
             if proxy
             else "ไม่มีคลาสที่เทรนจากภาพตัวแทนข้ามพืช",
+            *extra_limits_th,
         ],
-        # ยังเป็น False โดยเจตนา: ชุดที่ใช้ปรับเทียบไม่ใช่โดเมนที่นำไปใช้งาน
+        # ยังเป็น False โดยเจตนา: ต่อให้มี temperature ชุดที่ใช้ปรับเทียบก็ไม่ใช่
+        # โดเมนที่นำไปใช้งาน
         # การตั้งเป็น True จะทำให้หน้าจอได้รับอนุญาตให้เขียนว่าตัวเลขคือความน่าจะเป็น
         # ซึ่งยังไม่จริงสำหรับแปลงแตงโม แม้ ECE บนชุดตรวจสอบจะวัดไว้แล้ว
         calibrated=False,
@@ -797,6 +822,13 @@ def _build_claude() -> Engine | None:
 # ---------------------------------------------------------------- registry
 
 
+def _model_paths(raw: str, defaults: Sequence[Path]) -> list[Path]:
+    """ใช้ค่าตั้ง explicit ก่อน; ถ้าไม่มีให้ใช้เฉพาะ default ที่มีอยู่ครบทุกไฟล์."""
+    if (raw or "").strip():
+        return [path for path in _wide9_paths(raw, defaults[-1]) if path.is_file()]
+    return list(defaults) if all(path.is_file() for path in defaults) else []
+
+
 def build_registry(
     legacy_model_path: Path,
     legacy_session: ort.InferenceSession,
@@ -808,7 +840,8 @@ def build_registry(
     """สร้างทะเบียน engine จากไฟล์ที่มีอยู่จริงในโฟลเดอร์นี้
 
     legacy4 เป็นตัวบังคับ ``main.py`` เปิดและตรวจไว้แล้วจึงส่งเข้ามา
-    ส่วน wide9 เป็นตัวเสริม ถ้าไม่มีไฟล์ก็เพียงไม่ปรากฏในทะเบียน
+    โมเดลเสริมเป็นตัวเลือกสำหรับเปรียบเทียบเท่านั้น ถ้าไฟล์ใดไม่มีจะไม่ปรากฏ
+    ในทะเบียน โดยไม่กระทบ legacy4 ที่เป็นเส้นทางวินิจฉัยหลัก
     เซอร์วิสยังสตาร์ทได้และทำงานเหมือนเดิมทุกอย่าง
     """
     registry: dict[str, Engine] = {
@@ -822,10 +855,58 @@ def build_registry(
         )
     }
 
-    # รับได้ทั้งไฟล์เดียวและหลายไฟล์คั่นด้วยจุลภาค เพื่อทำ ensemble โดยไม่ต้องแก้โค้ด
-    wide_paths = [p for p in _wide9_paths(os.getenv("WIDE9_MODEL_PATH", ""), HERE / "wide9.onnx") if p.is_file()]
+    # สมาชิก 3 รุ่นนี้มีฉลากตรงกัน จึงทำ ensemble เมื่อคัดลอกมาครบทั้งหมด
+    # เครื่องที่มีเพียง wide9.onnx ยังคงทำงานแบบเดิมได้
+    wide_defaults = [HERE / "melon_m0.onnx", HERE / "melon_e1.onnx", HERE / "wide9.onnx"]
+    wide_paths = _model_paths(os.getenv("WIDE9_MODEL_PATH", ""), wide_defaults)
+    if not wide_paths and (HERE / "wide9.onnx").is_file():
+        wide_paths = [HERE / "wide9.onnx"]
     if wide_paths:
         registry["wide9"] = _build_wide9(wide_paths)
+
+    # โมเดลสองรุ่นต่อไปนี้ไม่มีการวัดภาคสนามบนแตงโม จึงเปิดเป็นข้อสังเกต
+    # เพื่อเปรียบเทียบกับภาพเดียวกันเท่านั้น ไม่สามารถเป็นเส้นทางรักษาได้
+    wide11_paths = _model_paths(
+        os.getenv("WIDE11_MODEL_PATH", ""), [HERE / "melon_pv0.onnx"]
+    )
+    if wide11_paths:
+        registry["wide11"] = _build_wide9(
+            wide11_paths,
+            engine_name="wide11",
+            title_prefix_th="โมเดลกว้างรุ่นทดลอง",
+            description_th=(
+                "โมเดล 11 คลาสที่เพิ่มไรแดงและโรคใบจุดวงแหวนจากชุดข้อมูลอ้างอิง "
+                "ใช้เพิ่มมุมมองการคัดกรองเท่านั้น ไม่ใช่การยืนยันโรคหรือแผนรักษา"
+            ),
+            good_for_th=[
+                "ดูข้อสังเกตเพิ่มเติมเกี่ยวกับไรแดงและโรคใบจุดวงแหวน",
+                "เปรียบเทียบผลกับโมเดลหลักและโมเดลกว้าง 9 คลาสบนภาพเดียวกัน",
+            ],
+            extra_limits_th=[
+                "ไม่มีผลวัดภาคสนามบนแตงโม; ผลและคะแนนห้ามใช้ยืนยันโรคหรือเลือกสารเคมี",
+            ],
+        )
+
+    baseline_paths = _model_paths(
+        os.getenv("BASELINE9_MODEL_PATH", ""), [HERE / "watermelon_cls.onnx"]
+    )
+    if baseline_paths:
+        registry["baseline9"] = _build_wide9(
+            baseline_paths,
+            engine_name="baseline9",
+            title_prefix_th="โมเดล 9 คลาสรุ่นเทียบเคียง",
+            description_th=(
+                "โมเดลรุ่นก่อนหน้าที่เก็บไว้ให้เปรียบเทียบผลกับรุ่นใหม่ "
+                "ไม่ใช่ตัวเลือกหลักสำหรับการใช้งานภาคสนาม"
+            ),
+            good_for_th=[
+                "ตรวจสอบความต่างของผลลัพธ์ระหว่างรุ่นเดิมและรุ่นใหม่",
+            ],
+            extra_limits_th=[
+                "ผลวัดใน metadata ต่ำกว่ารุ่น wide9 ปัจจุบัน จึงไม่ควรใช้เป็นผลหลัก",
+                "ใช้สำหรับเปรียบเทียบย้อนหลังเท่านั้น; ห้ามใช้ยืนยันโรคหรือเลือกสารเคมี",
+            ],
+        )
 
     # claude ปรากฏเฉพาะเมื่อตั้ง VISION_ENABLE_CLAUDE=1 และมีคีย์กับ SDK ครบ
     # ไม่ใส่ไว้แบบ "มีแต่เรียกไม่ได้" เพราะผู้เรียกจะเลือกแล้วพังตอนใช้งานจริง

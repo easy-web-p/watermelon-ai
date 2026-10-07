@@ -38,6 +38,8 @@ export function VisionCompareCard({
   const engineLabels: Record<VisionEngineName, string> = {
     legacy4: 'Legacy 4 (โมเดลมาตรฐาน)',
     wide9: 'Wide-9 (โมเดล 9 คลาส)',
+    wide11: 'Wide-11 (โมเดล 11 คลาสรุ่นทดลอง)',
+    baseline9: 'Baseline-9 (โมเดลเทียบเคียง)',
     claude: 'Claude Vision (วิเคราะห์เชิงลึก)',
   };
 

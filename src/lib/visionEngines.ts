@@ -21,7 +21,7 @@
 import { DISEASES } from '../data/diseases';
 import { MODEL_CLASSES, type ModelClass } from './diseaseModel';
 
-export const VISION_ENGINE_NAMES = ['legacy4', 'wide9', 'claude'] as const;
+export const VISION_ENGINE_NAMES = ['legacy4', 'wide9', 'wide11', 'baseline9', 'claude'] as const;
 export type VisionEngineName = (typeof VISION_ENGINE_NAMES)[number];
 
 /** ค่าเริ่มต้นตรงกับฝั่งเซอร์วิส: ตัวที่ปรับเทียบแล้วและวัดผลบนภาพแตงโมจริง */
@@ -82,10 +82,19 @@ const WIDE9_TO_DISEASE_ID: Record<string, string> = {
   watermelon_mosaic_virus: 'watermelon-mosaic-virus',
 };
 
+/** โมเดล wide11 เพิ่มสองคลาสจาก wide9 เท่านั้น จึงระบุการจับคู่เพิ่มตรง ๆ. */
+const WIDE11_TO_DISEASE_ID: Record<string, string> = {
+  ...WIDE9_TO_DISEASE_ID,
+  spider_mite: 'thrips-mites',
+  target_leaf_spot: 'target-leaf-spot',
+};
+
 /** คลาสที่หมายถึง "ไม่พบโรค" ของแต่ละ engine */
 const HEALTHY_CLASS: Record<VisionEngineName, string | null> = {
   legacy4: 'Healthy',
   wide9: 'healthy',
+  wide11: 'healthy',
+  baseline9: 'healthy',
   claude: null,
 };
 
@@ -107,9 +116,11 @@ export function resolveDiseaseId(engine: VisionEngineName, classId: string): str
   const candidate =
     engine === 'claude'
       ? classId
-      : engine === 'wide9'
-        ? WIDE9_TO_DISEASE_ID[classId]
-        : LEGACY4_TO_DISEASE_ID[classId];
+      : engine === 'wide11'
+        ? WIDE11_TO_DISEASE_ID[classId]
+        : engine === 'wide9' || engine === 'baseline9'
+          ? WIDE9_TO_DISEASE_ID[classId]
+          : LEGACY4_TO_DISEASE_ID[classId];
 
   if (!candidate) return null;
   return DISEASES.some((d) => d.id === candidate) ? candidate : null;
@@ -118,6 +129,8 @@ export function resolveDiseaseId(engine: VisionEngineName, classId: string): str
 /** คลาสทั้งหมดของ engine ที่จับคู่กับแคตตาล็อกได้ ใช้ในเทสต์และหน้าขอบเขตการตรวจ */
 export function mappedClasses(engine: VisionEngineName): readonly string[] {
   if (engine === 'legacy4') return Object.keys(LEGACY4_TO_DISEASE_ID);
+  if (engine === 'wide11') return Object.keys(WIDE11_TO_DISEASE_ID);
+  if (engine === 'baseline9') return Object.keys(WIDE9_TO_DISEASE_ID);
   if (engine === 'wide9') return Object.keys(WIDE9_TO_DISEASE_ID);
   return [];
 }

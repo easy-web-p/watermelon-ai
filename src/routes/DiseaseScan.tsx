@@ -187,44 +187,14 @@ export function DiseaseScan() {
         notes,
       });
       setCompareState({ status: 'success', data: res, engine });
+      const engineTitle = enginesList.find((item) => item.name === engine)?.title_th ?? engine;
       toast.success(
-        `วิเคราะห์เปรียบเทียบด้วย ${engine === 'wide9' ? 'Wide-9' : engine === 'claude' ? 'Claude Vision' : 'Legacy 4'} สำเร็จ`,
+        `วิเคราะห์เปรียบเทียบด้วย ${engineTitle} สำเร็จ`,
       );
     } catch (err: unknown) {
-      const isOfflineOrPreview =
-        (err instanceof ApiError && (err.status === 404 || err.status === 502 || err.status === 503)) ||
-        err instanceof NetworkError;
-
-      if (isOfflineOrPreview) {
-        // Safe preview observation when backend is offline
-        const previewClass = engine === 'wide9' ? 'powdery_mildew' : 'cercospora_leaf_spot';
-        setCompareState({
-          status: 'success',
-          engine,
-          data: {
-            success: true,
-            engine,
-            prediction: {
-              predicted_class: previewClass,
-              confidence: 0.86,
-              confidence_percentage: 86,
-              explanation:
-                engine === 'claude'
-                  ? 'พบอาการคราบฝ้าสีขาวคล้ายผงแป้งกระจายบนผิวใบ มีลักษณะตรงกับราแป้งในระยะเริ่มแรก'
-                  : undefined,
-            },
-            disclaimer:
-              'ผลนี้เป็นข้อสังเกตจากเครื่องยนต์ที่เลือก ไม่ใช่คำวินิจฉัย และไม่ได้แนบแผนการรักษา สำหรับผลที่จับคู่กับแผนการจัดการและระยะปลอดภัย PHI ให้ใช้โมเดลหลัก',
-          },
-        });
-        toast.info(
-          `แสดงผลข้อสังเกตเปรียบเทียบด้วย ${engine === 'wide9' ? 'Wide-9' : 'Claude Vision'}`,
-        );
-      } else {
-        const msg = err instanceof Error ? err.message : 'เปรียบเทียบไม่สำเร็จ';
-        setCompareState({ status: 'error', engine, message: msg });
-        toast.error(msg);
-      }
+      const msg = err instanceof Error ? err.message : 'เปรียบเทียบไม่สำเร็จ';
+      setCompareState({ status: 'error', engine, message: msg });
+      toast.error(msg);
     }
   }
 
@@ -465,6 +435,8 @@ export function DiseaseScan() {
                 <span>
                   {selectedEngine === 'legacy4' && '• แนะนำสำหรับการวินิจฉัยหลัก ออกใบสั่งยา และคำนวณระยะปลอดภัย PHI'}
                   {selectedEngine === 'wide9' && '• เหมาะสำหรับตรวจราแป้ง (Powdery Mildew) และโรคใบจุดเพิ่มเติม'}
+                  {selectedEngine !== 'legacy4' && selectedEngine !== 'wide9' &&
+                    `• ${enginesList.find((engine) => engine.name === selectedEngine)?.description_th ?? 'ใช้เพื่อเปรียบเทียบข้อสังเกตจากภาพเดียวกัน'}`}
                 </span>
                 {selectedEngine !== 'legacy4' && (
                   <Badge tone="neutral" className="text-[10px] py-0 shrink-0 ml-2">คะแนนดิบ</Badge>

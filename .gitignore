@@ -23,6 +23,10 @@ fastapi_service/model.onnx.data
 # ที่มาของข้อมูลเทรนรายคลาส ผลวัด recall) จึง commit ไว้ ไม่ ignore
 fastapi_service/wide9.onnx
 fastapi_service/wide9.onnx.data
+fastapi_service/melon_*.onnx
+fastapi_service/melon_*.onnx.data
+fastapi_service/watermelon_cls.onnx
+fastapi_service/watermelon_cls.onnx.data
 
 # Produced by a calibration run against a specific set of labelled photos, and
 # only meaningful next to the model.onnx it was fitted for. Committing one would

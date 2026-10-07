@@ -46,8 +46,12 @@ describe('vision engine class mapping', () => {
   it('treats each engine healthy label as no disease', () => {
     expect(resolveDiseaseId('legacy4', 'Healthy')).toBeNull();
     expect(resolveDiseaseId('wide9', 'healthy')).toBeNull();
+    expect(resolveDiseaseId('wide11', 'healthy')).toBeNull();
+    expect(resolveDiseaseId('baseline9', 'healthy')).toBeNull();
     expect(isHealthyClass('legacy4', 'Healthy')).toBe(true);
     expect(isHealthyClass('wide9', 'healthy')).toBe(true);
+    expect(isHealthyClass('wide11', 'healthy')).toBe(true);
+    expect(isHealthyClass('baseline9', 'healthy')).toBe(true);
     // ชื่อคลาสของ engine หนึ่งต้องไม่ถูกตีความด้วยตารางของอีก engine
     expect(isHealthyClass('wide9', 'Healthy')).toBe(false);
     expect(isHealthyClass('legacy4', 'healthy')).toBe(false);
@@ -55,6 +59,9 @@ describe('vision engine class mapping', () => {
 
   it('refuses a class it does not know instead of guessing', () => {
     expect(resolveDiseaseId('wide9', 'not_a_class')).toBeNull();
+    expect(resolveDiseaseId('wide11', 'spider_mite')).toBe('thrips-mites');
+    expect(resolveDiseaseId('wide11', 'target_leaf_spot')).toBe('target-leaf-spot');
+    expect(resolveDiseaseId('baseline9', 'powdery_mildew')).toBe('powdery-mildew');
     expect(resolveDiseaseId('legacy4', 'Powdery_Mildew')).toBeNull();
     // claude อาจตอบ unknown เมื่อไม่มีรายการใดตรง ต้องไม่ถูกจับคู่กับโรคใด
     expect(resolveDiseaseId('claude', 'unknown')).toBeNull();

@@ -200,6 +200,7 @@ export function FarmPlots() {
   const [history, setHistory] = useState<DiseaseRecord[] | null>(null);
   const [historyError, setHistoryError] = useState(false);
   const [historyFilterPlotOnly, setHistoryFilterPlotOnly] = useState(false);
+  const [plotQuery, setPlotQuery] = useState('');
 
   // Modals
   const [addOpen, setAddOpen] = useState(false);
@@ -240,6 +241,27 @@ export function FarmPlots() {
   const selectedPlotActivities = useMemo(() => {
     return activities.filter((a) => a.plotId === selected.id);
   }, [activities, selected.id]);
+
+  const filteredPlots = useMemo(() => {
+    const rawTokens = plotQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (rawTokens.length === 0) return plots;
+    return plots.filter((plot) => {
+      const searchable = [
+        plot.name,
+        plot.location,
+        plot.size,
+        plot.cultivar,
+        plot.stage,
+        plot.health,
+        plot.expectedYield,
+        plot.harvest,
+        plot.alert ?? '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      return rawTokens.every((token) => searchable.includes(token));
+    });
+  }, [plots, plotQuery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -474,13 +496,49 @@ export function FarmPlots() {
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
-          {/* Plot List (Left column) */}
-          <div className="flex flex-col gap-3 lg:col-span-5">
+          {/* Plot List (Left column) — ล็อกอยู่กับที่บนจอใหญ่ (Sticky) */}
+          <div className="flex flex-col gap-3 lg:col-span-5 lg:sticky lg:top-16 lg:self-start lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto no-scrollbar">
             <div className="flex items-center justify-between px-1">
-              <h3 className="text-label-lg font-bold text-on-surface">รายชื่อแปลงเพาะปลูก ({plots.length})</h3>
-              <span className="text-caption text-on-surface-variant">เลือกแปลงเพื่อดูข้อมูลย่อย</span>
+              <h3 className="text-label-lg font-bold text-on-surface">รายชื่อแปลงเพาะปลูก ({filteredPlots.length}/{plots.length})</h3>
+              <span className="text-caption text-on-surface-variant">เลือกแปลงเพื่อดูข้อมูล</span>
             </div>
-            {plots.map((plot) => {
+
+            {/* ช่องค้นหาแปลงเพาะปลูก — ค้นหาข้อมูลทั้งหมดของแปลง */}
+            <label className="flex items-center gap-2 rounded-xl bg-surface-lowest px-3.5 py-2 shadow-xs border border-outline-variant/30">
+              <Icon name="search" size={16} className="text-outline" />
+              <input
+                type="search"
+                value={plotQuery}
+                onChange={(e) => setPlotQuery(e.target.value)}
+                placeholder="ค้นหาข้อมูลแปลง: ชื่อ, พันธุ์, สถานที่, ระยะ หรืออาการ..."
+                className="w-full min-w-0 border-0 bg-transparent text-body-sm text-on-surface outline-none placeholder:text-outline"
+              />
+              {plotQuery && (
+                <button
+                  type="button"
+                  onClick={() => setPlotQuery('')}
+                  className="cursor-pointer text-outline hover:text-on-surface p-0.5"
+                  title="ล้างคำค้นหา"
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              )}
+            </label>
+
+            {filteredPlots.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-xl bg-surface-lowest p-6 text-center shadow-card">
+                <Icon name="search_off" size={28} className="text-outline" />
+                <p className="mt-2 text-label-md font-semibold text-on-surface">ไม่พบแปลงที่ตรงกับ "{plotQuery}"</p>
+                <button
+                  type="button"
+                  onClick={() => setPlotQuery('')}
+                  className="mt-2 text-caption font-semibold text-primary hover:underline cursor-pointer"
+                >
+                  ล้างคำค้นหา
+                </button>
+              </div>
+            ) : (
+              filteredPlots.map((plot) => {
               const active = plot.id === selected.id;
               const tone = HEALTH_TONE[plot.health];
               const retired = plot.stage === 'เก็บเกี่ยวแล้ว';
@@ -539,7 +597,7 @@ export function FarmPlots() {
                   ) : null}
                 </button>
               );
-            })}
+            }))}
           </div>
 
           {/* Plot Details (Right column) */}

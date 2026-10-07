@@ -136,16 +136,32 @@ export function SupportedDiseases() {
   const [openId, setOpenId] = useState<string | null>(DISEASES[0].id);
 
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const rawTokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return DISEASES.filter((disease) => {
       const matchesCategory = category === 'ทั้งหมด' || disease.category === category;
-      const matchesQuery =
-        !needle ||
-        disease.name.toLowerCase().includes(needle) ||
-        disease.latin.toLowerCase().includes(needle) ||
-        disease.pathogen.toLowerCase().includes(needle) ||
-        disease.symptoms.some((symptom) => symptom.toLowerCase().includes(needle));
-      return matchesCategory && matchesQuery;
+      if (!matchesCategory) return false;
+      if (rawTokens.length === 0) return true;
+
+      // ค้นหาครอบคลุมทุกข้อมูล: ชื่อไทย, ชื่อวิทยาศาสตร์, เชื้อสาเหตุ, อาการ, สภาพแวดล้อม, สารเคมี, ชีวภัณฑ์, เขตกรรม, ความรุนแรง และ PHI
+      const searchable = [
+        disease.name,
+        disease.latin,
+        disease.pathogen,
+        disease.category,
+        SEVERITY_LABEL[disease.severity],
+        disease.yieldLoss,
+        ...(disease.symptoms ?? []),
+        disease.conditions,
+        disease.chemical,
+        disease.biological,
+        disease.cultural,
+        `phi ${disease.phi} วัน`,
+        `${disease.phi} วัน`,
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      return rawTokens.every((token) => searchable.includes(token));
     });
   }, [category, query]);
 
@@ -185,16 +201,27 @@ export function SupportedDiseases() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-12">
-        <div className="sticky top-20 z-30 -mx-4 mb-6 flex flex-wrap items-center gap-3 bg-surface/90 px-4 py-4 backdrop-blur-md sm:-mx-6 sm:px-6">
-          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-surface-lowest px-4 py-2.5 shadow-sm sm:max-w-sm">
+        {/* แถบค้นหาและตัวกรอง — ล็อกอยู่กับที่ (Sticky) ด้านบนเมื่อเลื่อนหน้าจอ */}
+        <div className="sticky top-16 z-30 -mx-4 mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-outline-variant/30 bg-surface/95 px-4 py-3 shadow-sm backdrop-blur-md sm:-mx-6 sm:px-6">
+          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-surface-lowest px-4 py-2.5 shadow-sm sm:max-w-md">
             <Icon name="search" size={18} className="text-outline" />
             <input
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="ค้นหาชื่อโรค อาการ หรือชื่อเชื้อ..."
+              placeholder="ค้นหาข้อมูลทั้งหมด: ชื่อโรค, เชื้อสาเหตุ, อาการ, สารเคมีรักษา, ชีวภัณฑ์ หรือ PHI..."
               className="w-full min-w-0 border-0 bg-transparent text-body-md text-on-surface outline-none placeholder:text-outline"
             />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="cursor-pointer text-outline hover:text-on-surface p-0.5"
+                title="ล้างคำค้นหา"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            )}
           </label>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -215,6 +242,26 @@ export function SupportedDiseases() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* แถบสรุปจำนวนรายการที่พบ */}
+        <div className="mb-4 flex items-center justify-between px-1 text-caption text-on-surface-variant">
+          <span>
+            แสดง {filtered.length} จากทั้งหมด {DISEASES.length} โรคในคลังความรู้
+            {query && <span className="font-semibold text-primary"> (คำค้น: "{query}")</span>}
+          </span>
+          {(query || category !== 'ทั้งหมด') && (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                setCategory('ทั้งหมด');
+              }}
+              className="cursor-pointer text-primary hover:underline font-semibold"
+            >
+              ล้างตัวกรองทั้งหมด
+            </button>
+          )}
         </div>
 
         {filtered.length === 0 ? (

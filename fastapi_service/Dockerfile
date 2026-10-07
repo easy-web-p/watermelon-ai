@@ -24,9 +24,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # โค้ดและไฟล์โมเดล — คัดลอกหลังติดตั้ง dependency เพื่อให้แก้โค้ดแล้ว build ใหม่เร็ว
 COPY *.py ./
 COPY model.onnx model.onnx.json metrics.json ./
-# wide9 เป็นตัวเสริม ถ้าไม่มีไฟล์เซอร์วิสยังสตาร์ทได้ (ดู engines.build_registry)
-# ใช้ * เพื่อให้ไม่พังตอน build ถ้าไม่ได้วางไฟล์ไว้
-COPY wide9.onnx* wide9.labels.json* ./
+# รวมรุ่น ensemble, wide11 และ baseline ที่จัดวางไว้ข้างบริการ
+# โดยไม่ผูก Dockerfile กับรายชื่อรุ่นใดรุ่นหนึ่ง
+COPY *.onnx* *.labels.json metrics.json ./
 # calibration.json เป็นตัวเสริม ถ้าไม่มีจะรายงานว่ายังไม่ปรับเทียบ
 COPY calibration.json* ./
 

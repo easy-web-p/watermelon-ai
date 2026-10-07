@@ -26,16 +26,31 @@ export function FertilizerDirectory() {
   const [mixerOpen, setMixerOpen] = useState(false);
 
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const rawTokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return PRODUCTS.filter((product) => {
       if (filter !== 'ทั้งหมด' && product.kind !== filter) return false;
       if (organicOnly && !product.organic) return false;
-      if (!needle) return true;
-      return (
-        product.name.toLowerCase().includes(needle) ||
-        product.active.toLowerCase().includes(needle) ||
-        product.targets.some((target) => target.toLowerCase().includes(needle))
-      );
+      if (rawTokens.length === 0) return true;
+
+      // ค้นหาครอบคลุมทุกข้อมูล: ชื่อการค้า, สารออกฤทธิ์, กลุ่มกลไกฤทธิ์ FRAC/IRAC, ประเภท, อัตราใช้, ระยะเจริญเติบโต, PHI, ราคา, เป้าหมาย และหมายเหตุ
+      const searchable = [
+        product.name,
+        product.active,
+        product.kind,
+        product.group ?? '',
+        product.rate,
+        product.stage,
+        product.price,
+        `phi ${product.phi} วัน`,
+        `${product.phi} วัน`,
+        ...(product.targets ?? []),
+        product.organic ? 'ชีวภัณฑ์ อินทรีย์ organic ปลอดสาร' : '',
+        product.rotate ? 'สลับกลุ่ม ป้องกันการดื้อยา' : '',
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      return rawTokens.every((token) => searchable.includes(token));
     });
   }, [filter, query, organicOnly]);
 
@@ -73,16 +88,27 @@ export function FertilizerDirectory() {
           </div>
         </Card>
 
-        <div className="mb-5 flex flex-wrap items-center gap-3">
-          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-surface-lowest px-4 py-2.5 shadow-sm sm:max-w-sm">
+        {/* แถบค้นหาและตัวกรอง — ล็อกอยู่กับที่ (Sticky) ด้านบนเมื่อเลื่อนหน้าจอ */}
+        <div className="sticky top-16 z-30 -mx-4 mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-outline-variant/30 bg-surface/95 px-4 py-3 shadow-sm backdrop-blur-md sm:-mx-6 sm:px-6">
+          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-surface-lowest px-4 py-2.5 shadow-sm sm:max-w-md">
             <Icon name="search" size={18} className="text-outline" />
             <input
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="ค้นหาชื่อการค้า สารออกฤทธิ์ หรือโรค/แมลงเป้าหมาย..."
+              placeholder="ค้นหาข้อมูลทั้งหมด: ชื่อยา, สารออกฤทธิ์, กลุ่ม FRAC/IRAC, โรค/แมลง, ระยะ หรือ PHI..."
               className="w-full min-w-0 border-0 bg-transparent text-body-md text-on-surface outline-none placeholder:text-outline"
             />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="cursor-pointer text-outline hover:text-on-surface p-0.5"
+                title="ล้างคำค้นหา"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            )}
           </label>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -113,6 +139,27 @@ export function FertilizerDirectory() {
             />
             <span className="text-label-md font-semibold text-on-surface">เฉพาะชีวภัณฑ์/อินทรีย์</span>
           </label>
+        </div>
+
+        {/* แถบสรุปจำนวนรายการที่พบ */}
+        <div className="mb-4 flex items-center justify-between px-1 text-caption text-on-surface-variant">
+          <span>
+            แสดง {filtered.length} จากทั้งหมด {PRODUCTS.length} รายการ
+            {query && <span className="font-semibold text-primary"> (คำค้น: "{query}")</span>}
+          </span>
+          {(query || filter !== 'ทั้งหมด' || organicOnly) && (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                setFilter('ทั้งหมด');
+                setOrganicOnly(false);
+              }}
+              className="cursor-pointer text-primary hover:underline font-semibold"
+            >
+              ล้างตัวกรองทั้งหมด
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
