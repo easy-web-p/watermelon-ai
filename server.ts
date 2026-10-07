@@ -4,6 +4,22 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import { persistentDb, CloudStorageService, MAX_SIGNED_URL_TTL_SEC } from "./server-storage";
+import { chatModelPolicy } from "./server-cost-policy";
+import {
+  HistoryStore,
+  disabledStore,
+  firestoreProjectId,
+  historyBackendPolicy,
+  type FirestoreLike,
+} from "./server-history-store";
+import {
+  GUEST_USER_ID,
+  canAccessConversation,
+  canPersistFor,
+  isElevated,
+  persistenceNote,
+  visibleConversations,
+} from "./server-ownership";
 import crypto from "crypto";
 import fs from "fs";
 import {
@@ -267,7 +283,7 @@ app.use((req, res, next) => {
  */
 
 /** Shared bucket for unauthenticated callers. Owns nothing personal. */
-const GUEST_USER_ID = "guest-anonymous";
+// GUEST_USER_ID และ isElevated ย้ายไป ./server-ownership เพื่อให้เทสต์เรียกได้โดยไม่ต้องเปิดเซิร์ฟเวอร์
 
 type Identity = {
   sub: string;
@@ -300,10 +316,6 @@ function identityOf(req: express.Request): Identity {
   const request = req as IdentifiedRequest;
   if (!request.identity) request.identity = resolveIdentity(req);
   return request.identity;
-}
-
-function isElevated(role: string): boolean {
-  return role === "admin" || role === "super_admin";
 }
 
 /** 401 for anyone who has not signed in. */
@@ -378,11 +390,47 @@ interface BackendMessage {
 // Persistent database connected
 const db = persistentDb.getDb();
 
-// Initialize Gemini Client if API key is present
-const apiKey = process.env.GEMINI_API_KEY;
+// Paid chat model, off unless somebody turned it on.
+//
+// This used to be `if (apiKey) aiClient = new GoogleGenAI({ apiKey })`, so
+// every text turn in every conversation called gemini-2.5-flash as soon as a
+// key existed in the environment. Finding a key is not a decision to bill per
+// message: keys get added ahead of time, copied from another project, or left
+// behind by whoever provisioned the box. The vision service already required
+// VISION_ENABLE_CLAUDE for the same reason; this gives the Node API the same
+// rule. Without the opt-in the expert rule system answers, which is free.
+/**
+ * ที่เก็บประวัติการสนทนา
+ *
+ * ปิดอยู่ = เขียนลงไฟล์ในเครื่องเหมือนเดิมทุกประการ
+ * เปิด = Firestore เป็นแหล่งความจริง ประวัติอยู่รอดการรีสตาร์ตและใช้ร่วมกัน
+ * ได้หลาย instance ซึ่งเป็นสิ่งที่ไฟล์ในคอนเทนเนอร์ทำไม่ได้
+ */
+const historyPolicy = historyBackendPolicy();
+let historyStore = disabledStore();
+if (historyPolicy.backend === "firestore") {
+  try {
+    // require แบบ dynamic เพื่อให้เครื่องที่ไม่ได้ตั้ง Firestore ไม่ต้องโหลดไลบรารีนี้เลย
+    const { Firestore } = await import("@google-cloud/firestore");
+    const client = new Firestore({ projectId: firestoreProjectId() });
+    historyStore = new HistoryStore(client as unknown as FirestoreLike);
+    console.log(`🗂️  ประวัติการสนทนาเก็บบน Firestore (${firestoreProjectId()})`);
+  } catch (err) {
+    // ไม่ปล่อยให้เซิร์ฟเวอร์ล้ม แต่ต้องดังพอให้เห็น เพราะโหมดนี้คือโหมดที่
+    // ประวัติหายเมื่อคอนเทนเนอร์ถูกแทน การเงียบคือการปล่อยให้ข้อมูลหายโดยไม่มีใครรู้
+    console.error("❌ ต่อ Firestore ไม่สำเร็จ ประวัติจะเก็บลงไฟล์ของเครื่องนี้แทน:", err);
+    historyStore.degradedReason = `ต่อ Firestore ไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`;
+  }
+} else {
+  console.log(`🗂️  ${historyPolicy.reason}`);
+}
+
+const chatCostPolicy = chatModelPolicy();
 let aiClient: GoogleGenAI | null = null;
-if (apiKey) {
-  aiClient = new GoogleGenAI({ apiKey });
+if (chatCostPolicy.enabled) {
+  aiClient = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY ?? "").trim() });
+} else if (chatCostPolicy.reason) {
+  console.log(`[chat] ไม่เรียกโมเดลที่เสียเงิน: ${chatCostPolicy.reason}`);
 }
 
 // In-memory rate limiting map for server protection
@@ -471,6 +519,16 @@ app.get("/api/v1/health", (req, res) => {
     uptimeSeconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development",
+    // รายงานออกมาเพราะทั้งสองอย่างนี้เงียบได้: ประวัติที่เก็บลงไฟล์จะหายเมื่อ
+    // คอนเทนเนอร์ถูกแทน และโมเดลแชทที่ปิดอยู่จะตอบด้วยระบบกฎแทนโดยไม่มีใครรู้
+    history: {
+      backend: historyStore.enabled ? "firestore" : "file",
+      reason: historyStore.degradedReason || historyPolicy.reason,
+    },
+    chatModel: {
+      paidModelEnabled: chatCostPolicy.enabled,
+      reason: chatCostPolicy.reason,
+    },
   });
 });
 
@@ -490,6 +548,27 @@ app.get("/api/v1/varieties/calibration", (req, res) => {
     },
   });
 });
+
+/**
+ * ส่งการเปลี่ยนแปลงประวัติขึ้น Firestore แล้วรายงานถ้าไม่สำเร็จ
+ *
+ * ไม่กลืน error: การเขียนที่ไม่สำเร็จแปลว่าประวัติของผู้ใช้จะหายเมื่อคอนเทนเนอร์
+ * ถูกแทน ซึ่งเป็นปัญหาเดียวกับที่ Firestore ถูกเอามาแก้ ถ้าเงียบ จะไม่มีใครรู้
+ * จนกระทั่งผู้ใช้มาถามว่าแชทหายไปไหน จึงบันทึกเหตุผลไว้ให้ /health รายงานด้วย
+ *
+ * คำขอของผู้ใช้ไม่ถูกทำให้ล้มตาม เพราะคำตอบที่เขาเห็นถูกเก็บในหน่วยความจำและ
+ * ไฟล์เรียบร้อยแล้ว การตอบ 500 ทั้งที่ข้อความส่งสำเร็จจะทำให้เขาส่งซ้ำ
+ */
+async function persistHistory(what: string, action: () => Promise<void>): Promise<void> {
+  if (!historyStore.enabled) return;
+  try {
+    await action();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`❌ บันทึกประวัติลง Firestore ไม่สำเร็จ (${what}):`, detail);
+    historyStore.degradedReason = `บันทึก ${what} ไม่สำเร็จ: ${detail}`;
+  }
+}
 
 // 1. GET /api/v1/conversations (Enforces Ownership & Search Defense)
 app.get("/api/v1/conversations", (req, res) => {
@@ -521,12 +600,11 @@ app.get("/api/v1/conversations", (req, res) => {
     });
   }
 
-  // Enforce ownership: a caller sees only their own conversations. The role
-  // comes from the verified token, so it can no longer be claimed by header.
-  let list = db.conversations;
-  if (!isElevated(userRole)) {
-    list = list.filter((c) => !c.userId || c.userId === currentUserId);
-  }
+  // Enforce ownership positively: a caller must *be* the owner. The previous
+  // filter kept any row with no `userId`, which made ownerless rows readable
+  // by everyone, and it bucketed every signed-out visitor under the one guest
+  // subject so each of them saw all the others' threads. See server-ownership.ts.
+  let list = visibleConversations(identityOf(req), db.conversations);
 
   if (normalized) {
     const q = normalized.toLowerCase();
@@ -541,7 +619,7 @@ app.get("/api/v1/conversations", (req, res) => {
 });
 
 // 2. POST /api/v1/conversations
-app.post("/api/v1/conversations", (req, res) => {
+app.post("/api/v1/conversations", async (req, res) => {
   const { sub: currentUserId } = identityOf(req);
   const { title = "แชทแตงโมใหม่ 🍉", mode = "general" } = req.body ?? {};
   const newConv: BackendConversation = {
@@ -558,11 +636,12 @@ app.post("/api/v1/conversations", (req, res) => {
   db.conversations.unshift(newConv);
   db.messages[newConv.id] = [];
   persistentDb.save();
+  await persistHistory("สร้างห้องสนทนา", () => historyStore.saveConversation(newConv));
   res.json(newConv);
 });
 
 // 3. GET /api/v1/conversations/:id/messages (Enforces Ownership: returns 404 if not owner)
-app.get("/api/v1/conversations/:id/messages", (req, res) => {
+app.get("/api/v1/conversations/:id/messages", async (req, res) => {
   const { id } = req.params;
   const { sub: currentUserId, role: userRole } = identityOf(req);
 
@@ -573,15 +652,28 @@ app.get("/api/v1/conversations/:id/messages", (req, res) => {
 
   // Ownership check: if it belongs to someone else, return 404 to avoid
   // leaking the fact that the conversation exists at all.
-  if (conv.userId && conv.userId !== currentUserId && !isElevated(userRole)) {
+  if (!canAccessConversation(identityOf(req), conv)) {
     return res.status(404).json({ error: "ไม่พบรายการ" });
   }
 
+  if (historyStore.enabled) {
+    // อ่านจากแหล่งความจริงโดยตรง ข้อความที่ instance อื่นเพิ่งเขียนอาจยังไม่ถึงแคช
+    // snapshot listener ตามเฉพาะหัวห้อง ไม่ได้ตามทุกข้อความของทุกห้อง
+    try {
+      const stored = await historyStore.loadMessages(id);
+      db.messages[id] = stored as any;
+      return res.json(stored);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("❌ อ่านข้อความจาก Firestore ไม่สำเร็จ ใช้ของในแคชแทน:", detail);
+      historyStore.degradedReason = `อ่านข้อความไม่สำเร็จ: ${detail}`;
+    }
+  }
   res.json(db.messages[id] || []);
 });
 
 // DELETE /api/v1/conversations/:id
-app.delete("/api/v1/conversations/:id", (req, res) => {
+app.delete("/api/v1/conversations/:id", async (req, res) => {
   const { id } = req.params;
   const { sub: currentUserId, role: userRole } = identityOf(req);
 
@@ -591,12 +683,13 @@ app.delete("/api/v1/conversations/:id", (req, res) => {
   }
 
   const conv = db.conversations[index];
-  if (conv.userId && conv.userId !== currentUserId && !isElevated(userRole)) {
+  if (!canAccessConversation(identityOf(req), conv)) {
     return res.status(403).json({ error: "ไม่มีสิทธิ์ลบรายการนี้" });
   }
 
   db.conversations.splice(index, 1);
   delete db.messages[id];
+  await persistHistory("ลบห้องสนทนา", () => historyStore.dropConversation(id));
   persistentDb.save();
   persistentDb.logAudit("CONVERSATION_DELETED", currentUserId, `Deleted conversation ${id}`);
   res.json({ success: true, message: "ลบการสนทนาสำเร็จ" });
@@ -851,7 +944,7 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
   let conv = db.conversations.find((c) => c.id === id);
   // Appending to another farmer's thread only needed its id: an outsider
   // could write into their history and rename the conversation.
-  if (conv && conv.userId && conv.userId !== currentUserId && !isElevated(userRole)) {
+  if (conv && !canAccessConversation(identityOf(req), conv)) {
     return res.status(404).json({ error: "ไม่พบรายการ" });
   }
   if (!conv) {
@@ -869,7 +962,8 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
     db.conversations.unshift(conv);
     db.messages[id] = [];
   } else {
-    if (!conv.userId) conv.userId = currentUserId;
+    // ไม่มีการยึดแถวที่ไม่มีเจ้าของมาเป็นของผู้เรียกอีกต่อไป เพราะ canAccessConversation
+    // กันแถวเหล่านั้นไว้ก่อนถึงบรรทัดนี้แล้ว การเขียน userId ทับคือการยกห้องของคนอื่นให้ผู้ที่ขอก่อน
     if ((conv.title === "วิเคราะห์แตงโม" || conv.title.startsWith("conv-")) && content) {
       conv.title = content.trim().slice(0, 24) + " 🍉";
     }
@@ -986,6 +1080,10 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
     conv.messageCount += 2;
     db.messages[id].push(visionReply);
     persistentDb.save();
+    await persistHistory("บันทึกผลตรวจในแชท", async () => {
+      await historyStore.saveMessages(id, [userMessage, visionReply]);
+      await historyStore.saveConversation(conv!);
+    });
     persistentDb.logAudit("CHAT_VISION", id, `${diagnosis.status}: ${diagnosis.thai_name}`);
     return res.json(visionReply);
   }
@@ -1012,6 +1110,10 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
     db.messages[id].push(userMessage);
     db.messages[id].push(reply);
     persistentDb.save();
+    await persistHistory("บันทึกข้อความแชท", async () => {
+      await historyStore.saveMessages(id, [userMessage, reply]);
+      await historyStore.saveConversation(conv!);
+    });
     return res.json(reply);
   }
 
@@ -1067,6 +1169,10 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
 
   db.messages[id].push(userMessage);
   db.messages[id].push(assistantMessage);
+  await persistHistory("บันทึกข้อความแชท", async () => {
+    await historyStore.saveMessages(id, [userMessage, assistantMessage]);
+    await historyStore.saveConversation(conv!);
+  });
 
   // If user opted-in to training
   if (allow_training === true) {
@@ -1269,9 +1375,15 @@ app.get("/api/v1/admin/statistics", requireAdmin, (req, res) => {
 // "Clear my chat history" used to assign `db.conversations = []` and
 // `db.messages = {}`: one unauthenticated request destroyed every
 // conversation belonging to every user.
-app.delete("/api/v1/users/me/conversations", requireUser, (req, res) => {
+app.delete("/api/v1/users/me/conversations", requireUser, async (req, res) => {
   const { sub: currentUserId } = identityOf(req);
   const mine = db.conversations.filter((c: any) => c.userId === currentUserId);
+  // ลบบน Firestore ก่อนตัดออกจากแคช เพราะตัวช่วยอ่านรายการห้องจากแคช
+  // ถ้าตัดก่อน จะไม่เหลืออะไรให้มันรู้ว่าต้องลบห้องไหน ของบนคลาวด์จะค้างอยู่
+  // แล้ว snapshot listener จะพาห้องที่ผู้ใช้สั่งลบกลับมาอีกครั้ง
+  await persistHistory("ล้างประวัติของผู้ใช้", () =>
+    historyStore.dropConversationsOf(currentUserId, db as any),
+  );
   for (const conv of mine) delete db.messages[conv.id];
   db.conversations = db.conversations.filter((c: any) => c.userId !== currentUserId);
   persistentDb.save();
@@ -1524,7 +1636,7 @@ app.get("/api/v1/storage/files/:token/:expiresAt/:filename", (req, res) => {
 // owns.
 const SYNC_BATCH_LIMIT = 200;
 
-app.post("/api/v1/database/sync", requireUser, (req, res) => {
+app.post("/api/v1/database/sync", requireUser, async (req, res) => {
   const { pendingRecords } = req.body ?? {};
   const { sub: currentUserId } = identityOf(req);
 
@@ -1582,7 +1694,7 @@ app.post("/api/v1/database/sync", requireUser, (req, res) => {
         continue;
       }
       const conv = db.conversations.find((c) => c.id === convId);
-      if (!conv || (conv.userId && conv.userId !== currentUserId)) {
+      if (!canAccessConversation(identityOf(req), conv)) {
         rejected.push(`ไม่มีสิทธิ์เขียนลงห้องแชท ${convId}`);
         continue;
       }
@@ -1593,17 +1705,23 @@ app.post("/api/v1/database/sync", requireUser, (req, res) => {
       if (!db.messages[convId]) db.messages[convId] = [];
       // Rebuilt rather than spread: an offline payload must not be able to
       // forge an assistant turn or a diagnosis.
-      db.messages[convId].push({
+      const syncedMessage = {
         id: newId("msg"),
         conversationId: convId,
-        role: "user",
+        role: "user" as const,
         content: record.message.content,
         attachments: [],
         createdAt: new Date().toISOString(),
         status: "synced_offline",
-      });
+      };
+      db.messages[convId].push(syncedMessage);
       conv.messageCount += 1;
       conv.updatedAt = new Date().toISOString();
+      // ข้อความที่อัดไว้ตอนออฟไลน์ก็ต้องอยู่รอดการรีสตาร์ตเหมือนข้อความอื่น
+      await persistHistory("ซิงข้อความจากโหมดออฟไลน์", async () => {
+        await historyStore.saveMessages(convId, [syncedMessage]);
+        await historyStore.saveConversation(conv as any);
+      });
       syncedCount++;
       continue;
     }
@@ -1980,9 +2098,139 @@ app.get("/api/v1/watermelon/acoustic-model", (req, res) => {
   });
 });
 
+/**
+ * File a scan from the scan screen into the farmer's chat thread.
+ *
+ * `/disease-detect` recorded the diagnosis in `diseaseRecords` and returned
+ * it, but never created a conversation turn — so a scan done on the scan
+ * screen was invisible in the chat, and asking a follow-up question there
+ * started from nothing. The photo that was analysed and the answer that came
+ * back both belong in the thread, which is also what makes a follow-up
+ * question answerable.
+ *
+ * The two turns are shaped exactly like the ones the chat vision path writes,
+ * so `toFeedMessage` on the client already maps them onto its own bubbles and
+ * renders the diagnosis card. No screen change is needed for the history to
+ * appear; passing a `conversationId` is what links a scan to an open thread.
+ *
+ * Nothing is written for a guest: every signed-out visitor resolves to the
+ * one shared guest subject, so a stored guest thread would belong to all of
+ * them (see server-ownership.ts). Their history stays on their own device.
+ */
+async function fileScanIntoConversation(
+  viewer: { sub: string; role: string; isGuest: boolean },
+  conversationIdFromCaller: unknown,
+  photoBase64: string,
+  diagnosis: DiseaseDetection,
+  record: { id: string; detectedAt: string },
+  notes: string,
+): Promise<{ conversationId: string | null; persisted: boolean; note: string }> {
+  if (!canPersistFor(viewer)) {
+    return { conversationId: null, persisted: false, note: persistenceNote(viewer) };
+  }
+
+  const now = new Date().toISOString();
+  const requested =
+    typeof conversationIdFromCaller === "string" && conversationIdFromCaller.trim()
+      ? conversationIdFromCaller.trim()
+      : null;
+
+  let conv = requested ? db.conversations.find((c) => c.id === requested) : undefined;
+  // Appending to a thread the caller does not own needs only its id, so the
+  // same ownership rule as the chat endpoints applies here.
+  if (conv && !canAccessConversation(viewer, conv)) {
+    return {
+      conversationId: null,
+      persisted: false,
+      note: "ไม่พบห้องสนทนาที่ระบุในบัญชีนี้ ผลการตรวจถูกบันทึกไว้แล้วแต่ไม่ได้ผูกกับห้องใด",
+    };
+  }
+
+  const conversationId = conv?.id ?? requested ?? newId("conv");
+  if (!conv) {
+    conv = {
+      id: conversationId,
+      userId: viewer.sub,
+      title: `ตรวจโรค: ${diagnosis.thai_name.split(" ")[0]} 🍉`,
+      lastMessage: "",
+      createdAt: now,
+      updatedAt: now,
+      isPinned: false,
+      chatMode: "disease-diagnosis",
+      messageCount: 0,
+    };
+    db.conversations.unshift(conv);
+    db.messages[conversationId] = [];
+  }
+  if (!db.messages[conversationId]) db.messages[conversationId] = [];
+
+  // Keep the photo so reopening the thread shows what was analysed. Losing it
+  // only costs the thumbnail, so a storage failure must not fail the scan the
+  // farmer already got an answer for.
+  const attachments: any[] = [];
+  try {
+    const clean = photoBase64.replace(/^data:[^;]+;base64,/, "");
+    const saved = await CloudStorageService.saveFile("scan-leaf.jpg", Buffer.from(clean, "base64"));
+    const attachment = {
+      id: newId("att"),
+      type: "image" as const,
+      name: saved.filename,
+      mimeType: "image/jpeg",
+      url: saved.signedUrl,
+    };
+    if (!db.attachments) db.attachments = {};
+    db.attachments[attachment.id] = {
+      ...attachment,
+      storedName: saved.filename,
+      size: saved.size,
+      ownerId: viewer.sub,
+    };
+    attachments.push(attachment);
+  } catch (err) {
+    console.warn("[scan] could not store the scanned photo", err);
+  }
+
+  const userTurn: BackendMessage = {
+    id: newId("msg"),
+    conversationId,
+    role: "user",
+    // The notes the farmer typed on the scan screen are part of what was sent,
+    // so they belong in the turn rather than only in the diagnosis record.
+    content: notes.trim() || "[ส่งภาพใบแตงโมให้ตรวจโรคจากหน้าสแกน]",
+    attachments,
+    createdAt: now,
+    status: "completed",
+  };
+  const assistantTurn: BackendMessage = {
+    id: newId("msg"),
+    conversationId,
+    role: "assistant",
+    content: diagnosisToChatReply(diagnosis),
+    attachments: [],
+    diseaseDetection: { ...diagnosis, recordId: record.id, detectedAt: record.detectedAt },
+    createdAt: new Date().toISOString(),
+    status: "completed",
+    modelVersion: diagnosis.model_version,
+  };
+
+  db.messages[conversationId].push(userTurn, assistantTurn);
+  conv.lastMessage = diagnosis.thai_name;
+  conv.updatedAt = assistantTurn.createdAt;
+  conv.messageCount += 2;
+  persistentDb.save();
+  await persistHistory("บันทึกผลสแกนลงห้องสนทนา", async () => {
+    await historyStore.saveConversation(conv!);
+    await historyStore.saveMessages(conversationId, [userTurn, assistantTurn]);
+  });
+  persistentDb.logAudit("SCAN_FILED", viewer.sub, `${diagnosis.status}: ${diagnosis.thai_name}`);
+
+  return { conversationId, persisted: true, note: "" };
+}
+
 app.post("/api/v1/watermelon/disease-detect", async (req, res) => {
-  const { imageBase64, notes = "", mode } = req.body ?? {};
-  const { sub: currentUserId } = identityOf(req);
+  const { imageBase64, notes = "", mode, conversationId } = req.body ?? {};
+  const viewer = identityOf(req);
+  const currentUserId = viewer.sub;
   if (!imageBase64 || typeof imageBase64 !== "string") {
     return res.status(400).json({ error: "กรุณาแนบรูปภาพใบแตงโมที่ต้องการตรวจโรค" });
   }
@@ -1995,8 +2243,31 @@ app.post("/api/v1/watermelon/disease-detect", async (req, res) => {
   // `farmId` was taken from the request body, defaulting to "farm-01", so
   // a caller could file a scan under any farm — and the history endpoint
   // had nothing to scope by.
-  const record = recordDiagnosis(outcome.diagnosis, currentUserId, typeof notes === "string" ? notes : "");
-  res.json({ ...outcome.diagnosis, recordId: record.id, detectedAt: record.detectedAt });
+  const noteText = typeof notes === "string" ? notes : "";
+  const record = recordDiagnosis(outcome.diagnosis, currentUserId, noteText);
+
+  // A scan is also a turn in the conversation: the photo that was sent and
+  // the answer that came back. Without it the chat screen cannot answer a
+  // follow-up about a scan the farmer just did on the scan screen.
+  const filed = await fileScanIntoConversation(
+    viewer,
+    conversationId,
+    imageBase64,
+    outcome.diagnosis,
+    record,
+    noteText,
+  );
+
+  res.json({
+    ...outcome.diagnosis,
+    recordId: record.id,
+    detectedAt: record.detectedAt,
+    conversationId: filed.conversationId,
+    // Stated rather than implied: the client keeps a guest's history on the
+    // device, and it can only know to do that if the answer says so.
+    historyPersisted: filed.persisted,
+    historyNote: filed.note,
+  });
 });
 
 /**
@@ -2356,7 +2627,7 @@ app.get("/api/v1/pdpa/policy", (req, res) => {
   });
 });
 
-app.post("/api/v1/pdpa/forget-me", requireUser, (req, res) => {
+app.post("/api/v1/pdpa/forget-me", requireUser, async (req, res) => {
   const { sub: currentUserId } = identityOf(req);
 
   // The client sends `{ confirm: true }` and the server used to ignore it,
@@ -2373,6 +2644,9 @@ app.post("/api/v1/pdpa/forget-me", requireUser, (req, res) => {
   // (`m.userId !== currentUserId`) matched nothing and every message was
   // left behind after a right-to-erasure request. They are deleted by
   // conversation instead.
+  await persistHistory("ลบประวัติตอนลบบัญชี", () =>
+    historyStore.dropConversationsOf(currentUserId, db as any),
+  );
   for (const conv of myConversations) delete db.messages[conv.id];
   db.conversations = db.conversations.filter((c: any) => c.userId !== currentUserId);
 
@@ -2574,6 +2848,19 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
+  }
+
+  if (historyStore.enabled) {
+    try {
+      await historyStore.hydrate(db as any);
+      historyStore.watch(db as any, (err) =>
+        console.error("❌ snapshot listener ของประวัติหลุด:", err),
+      );
+      console.log(`🗂️  ดึงประวัติจาก Firestore แล้ว ${db.conversations.length} ห้อง`);
+    } catch (err) {
+      console.error("❌ ดึงประวัติจาก Firestore ไม่สำเร็จ ใช้ของในไฟล์ต่อไป:", err);
+      historyStore.degradedReason = `hydrate ไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`;
+    }
   }
 
   app.listen(PORT, "0.0.0.0", () => {

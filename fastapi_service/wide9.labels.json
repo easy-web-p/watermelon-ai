@@ -12,18 +12,24 @@
   ],
   "input_size": 224,
   "arch": "mobilenet_v3_large",
-  "val_accuracy": 0.672,
+  "val_accuracy": 0.7707,
+  "val_accuracy_single_view": 0.758,
+  "val_nll": 0.8027,
+  "val_ece": 0.073,
+  "temperature": 0.7657,
+  "weights": "raw",
+  "seed": 2,
   "train_images": 1149,
   "per_class_recall": {
-    "alternaria_blight": 0.359,
-    "angular_leaf_spot": 0.5319,
-    "cercospora_leaf_spot": 0.6136,
-    "downy_mildew": 0.4118,
-    "healthy": 0.95,
-    "leaf_curl_virus": 0.8333,
-    "phytophthora_blight": 0.7436,
+    "alternaria_blight": 0.7179,
+    "angular_leaf_spot": 0.617,
+    "cercospora_leaf_spot": 0.7727,
+    "downy_mildew": 0.5882,
+    "healthy": 0.9333,
+    "leaf_curl_virus": 0.875,
+    "phytophthora_blight": 0.8462,
     "powdery_mildew": 0.9677,
-    "watermelon_mosaic_virus": 0.1538
+    "watermelon_mosaic_virus": 0.0769
   },
   "note": "ชื่อคลาสต้องตรงกับรหัสโรคใน data/diseases/*.json จึงจะเชื่อมกับข้อมูลยาและปุ๋ยได้",
   "dataset_provenance": "mapped",
@@ -46,5 +52,12 @@
   ],
   "dataset_sources": [
     "datasets/plantdoc"
-  ]
+  ],
+  "val_macro_recall": 0.7105,
+  "ensemble_members": [
+    "melon_m2.onnx"
+  ],
+  "ensemble_temperature": 0.77,
+  "serving_tta": true,
+  "metrics_measured_with": "scripts/eval_model.py, TTA 6 มุมมอง, ensemble 1 ตัว, ชุด val 314 ภาพ"
 }

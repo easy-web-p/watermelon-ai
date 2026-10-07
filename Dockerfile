@@ -21,7 +21,11 @@ ENV NODE_ENV=production \
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
-COPY server.ts server-jwt.ts server-storage.ts ./
+# ใช้ glob ไม่ใช่รายชื่อ เพราะรายชื่อที่ตกหล่นไม่แสดงอาการตอน build
+# แต่คอนเทนเนอร์จะพังตอนสตาร์ตด้วย ERR_MODULE_NOT_FOUND ซึ่งเกิดขึ้นแล้วครั้งหนึ่ง
+# เมื่อแยกตรรกะความปลอดภัยออกเป็น server-ownership.ts, server-cost-policy.ts
+# และ server-history-store.ts แล้วลืมเติมในรายชื่อนี้
+COPY server*.ts ./
 COPY src ./src
 # หน้าเว็บที่ build แล้ว — server.ts เสิร์ฟโฟลเดอร์นี้เมื่อคำขอไม่ใช่ /api
 COPY dist ./dist

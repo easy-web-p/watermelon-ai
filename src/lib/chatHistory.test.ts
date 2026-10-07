@@ -294,6 +294,12 @@ describe('per-account scoping', () => {
       disease_id: 'anthracnose',
       thai_name: 'โรคแอนแทรคโนส',
       confidence_percentage: 90,
+      severity: 'สูง',
+      severity_level: 3,
+      urgent_action: 'พ่นสารป้องกันกำจัดเชื้อราทันที',
+      phi_days: 7,
+      model_version: 'legacy4@test',
+      from_verified_model: true,
     });
 
     setHistoryScope('user-a');

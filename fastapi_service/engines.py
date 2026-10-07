@@ -27,6 +27,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any, Callable
 
 import numpy as np
@@ -213,65 +214,205 @@ def _build_legacy4(
 
 # ---------------------------------------------------------------- wide9
 
+# มุมมองที่ใช้ตอนทำ TTA: (อัตราขยายก่อนครอบกลาง, พลิกซ้ายขวาหรือไม่)
+# วัดบนชุดตรวจสอบ 314 ภาพของโมเดลที่เสิร์ฟอยู่: หกมุมมองนี้ให้ 0.7707
+# เทียบมุมมองเดียว 0.7452 จึงคุ้มกับเวลาที่เพิ่ม
+# TTA ไม่ใช่กำไรฟรีเสมอ โมเดลที่ทนสเกลอยู่แล้วอาจแย่ลงเมื่อเพิ่มมุมมองซูม
+# ต้องวัดใหม่ทุกครั้งที่เปลี่ยนไฟล์โมเดล
+WIDE9_TTA_VIEWS: tuple[tuple[float, bool], ...] = (
+    (1.0, False),
+    (1.15, False),
+    (1.35, False),
+    (1.0, True),
+    (1.15, True),
+    (1.35, True),
+)
+# มุมมองเดียวที่ตรงกับการ validate ตอนเทรน ใช้เมื่อ mode == "fast" หรือปิด TTA
+WIDE9_SINGLE_VIEW: tuple[tuple[float, bool], ...] = ((1.15, False),)
 
-def _build_wide9(model_path: Path) -> Engine:
+
+def _center_crop_at(image: Image.Image, size: int, ratio: float) -> Image.Image:
+    """ย่อด้านสั้นให้เท่า ``size * ratio`` แล้วครอบกลางเป็นจัตุรัส ``size``
+
+    ``_preprocess_at`` บีบภาพเป็นจัตุรัสด้วย ``resize((size, size))`` ซึ่งทำให้
+    สัดส่วนเพี้ยนไปจากที่โมเดลเคยเห็นตอนเทรน เพราะตอน validate ใช้
+    Resize(ด้านสั้น) + CenterCrop วัดผลต่างได้ 1.9 จุดบนชุดตรวจสอบเดียวกัน
+    (0.6465 เทียบ 0.6656) เป็นความแม่นยำที่หายไปโดยไม่มีใครรู้ เพราะตัวเลขที่
+    รายงานไว้มาจากการวัดด้วยวิธีเตรียมภาพอีกแบบที่ผู้ใช้ไม่ได้รับ
+    """
+    short = max(1, int(round(size * ratio)))
+    width, height = image.size
+    scale = short / max(1, min(width, height))
+    resized = image.resize(
+        (max(size, round(width * scale)), max(size, round(height * scale))), Image.BICUBIC
+    )
+    width, height = resized.size
+    left, top = (width - size) // 2, (height - size) // 2
+    return resized.crop((left, top, left + size, top + size))
+
+
+def _wide9_batch(
+    image: Image.Image, size: int, views: tuple[tuple[float, bool], ...]
+) -> np.ndarray:
+    """สร้างแบตช์ของทุกมุมมองจากภาพเดียว เป็น NCHW"""
+    rgb = image.convert("RGB")
+    tensors = []
+    for ratio, flip in views:
+        source = rgb.transpose(Image.FLIP_LEFT_RIGHT) if flip else rgb
+        array = np.asarray(_center_crop_at(source, size, ratio), dtype=np.float32) / 255.0
+        array = (array - MEAN) / STD
+        tensors.append(array.transpose(2, 0, 1))
+    return np.ascontiguousarray(np.stack(tensors), dtype=np.float32)
+
+
+def _reliability_weight(tier: str, recall: float | None) -> float:
+    """น้ำหนัก = ที่มาของข้อมูลเทรน คูณ ความสามารถจับคลาสนั้นได้จริง
+
+    ``per_class_recall`` ถูกเก็บและรายงานอยู่แล้วแต่ไม่เคยถูกนำมาใช้ถ่วงคะแนน
+    ระดับที่มา (tier) บอกว่าภาพเทรนมาจากไหน ไม่ได้บอกว่าโมเดลทำได้ดีแค่ไหน
+    คลาสที่จับได้เพียง 8% ของกรณีจริงจึงรายงานความมั่นใจเท่าคลาสที่จับได้ 97%
+    ซึ่งทำให้ผู้อ่านประเมินหลักฐานผิดและอาจพ่นสารผิดกลุ่ม
+
+    สูตร 0.6 + 0.4 * recall ลดได้มากสุด 40% ไม่กลืนสัญญาณทิ้งทั้งหมด
+    ถ้าไฟล์ labels ไม่มีค่า recall ของคลาสนั้นจะไม่ลด เพื่อไม่เดาแทนข้อมูลจริง
+    """
+    weight = TIER_WEIGHT.get(tier, 1.0)
+    if recall is not None:
+        weight *= 0.6 + 0.4 * max(0.0, min(1.0, recall))
+    return weight
+
+
+def _wide9_paths(raw: str, fallback: Path) -> list[Path]:
+    """แยกรายการไฟล์โมเดลจากค่าที่ตั้งไว้ รับหลายไฟล์คั่นด้วย , หรือ ;
+
+    ไม่แยกด้วย ":" เพราะพาธบนวินโดวส์มีอักขระนี้ในตัวอักษรไดรฟ์
+    """
+    text = (raw or "").replace(";", ",").strip()
+    if not text:
+        return [fallback]
+    return [Path(part.strip()) for part in text.split(",") if part.strip()]
+
+
+def _wide9_tta_enabled() -> bool:
+    """WIDE9_TTA ค่าเริ่มต้นเป็น "เปิด" ต่างจาก _env_flag ที่ค่าเริ่มต้นเป็นปิด
+
+    _env_flag ตั้งค่าเริ่มต้นเป็นปิดเพราะมันคุม engine ที่เสียเงิน ที่นี่ไม่มี
+    ค่าใช้จ่าย มีแต่เวลา CPU และวัดแล้วว่าเปิดไว้แม่นกว่ากับโมเดลที่เสิร์ฟอยู่
+    (0.7707 เทียบ 0.7452) จึงให้ค่าเริ่มต้นเป็นเปิด และปิดได้ด้วย WIDE9_TTA=0
+    """
+    raw = (os.getenv("WIDE9_TTA") or "").strip().lower()
+    if not raw:
+        return True
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _build_wide9(model_paths: Path | Sequence[Path]) -> Engine:
     """โมเดล 9 คลาสจากโปรเจกต์วินิจฉัยโรคแตงโม
 
     ไม่นำกฎรวมผลและค่า temperature ของ legacy4 มาใช้ เพราะทั้งสองอย่างถูก fit
     มากับโมเดลนั้นและดัชนีคลาส Healthy ของมัน การใช้ผิดโมเดลทำให้ตัวเลขผิด
-    ที่นี่ใช้การเฉลี่ย logits จากการพลิกภาพ 3 มุม ซึ่งไม่ขึ้นกับความหมายของคลาส
-    แล้วลดน้ำหนักความมั่นใจตามที่มาของภาพที่ใช้เทรนคลาสนั้น
+
+    รับหลายไฟล์เพื่อทำ ensemble ได้ ทุกตัวต้องมีคลาสและขนาดภาพตรงกัน
+    การเฉลี่ยทำ **หลัง** softmax ไม่ใช่เฉลี่ย logits ดิบ เพราะสมาชิกแต่ละตัวมี
+    สเกล logits ของตัวเอง การเฉลี่ย logits ให้ตัวที่มั่นใจเกินจริงลากผลรวมไปทั้งก้อน
+    เหตุผลเดียวกันนี้ใช้กับการเฉลี่ยข้ามมุมมองของ TTA ด้วย
     """
-    # wide9.onnx -> wide9.labels.json (ชื่อเดียวกัน คนละนามสกุล)
-    labels_path = model_path.with_suffix(".labels.json")
-    if not labels_path.is_file():
-        raise RuntimeError(
-            f"พบไฟล์โมเดล {model_path.name} แต่ไม่พบ {labels_path.name} "
-            "ซึ่งเก็บลำดับคลาสและที่มาของข้อมูลเทรน — ถ้าปล่อยผ่านจะจับคู่คลาสผิดตัว"
-        )
-    payload = json.loads(labels_path.read_text(encoding="utf-8"))
-    classes: list[str] = payload["labels"]
-    size = int(payload.get("input_size", 224))
-    tiers: dict[str, str] = dict(payload.get("class_tiers") or {})
-    recall: dict[str, float] = dict(payload.get("per_class_recall") or {})
+    # รับไฟล์เดียวหรือหลายไฟล์ก็ได้ ตัวเรียกเดิมส่ง Path มาตัวเดียว
+    paths = [model_paths] if isinstance(model_paths, Path) else list(model_paths)
 
-    session, input_name, output_name, digest = _load_session(model_path)
-    version = f"{payload.get('arch', 'onnx')}@{digest}"
+    sessions: list[tuple[ort.InferenceSession, str, str, float, str]] = []
+    base: dict[str, Any] | None = None
+    classes: list[str] = []
+    size = 224
+    tiers: dict[str, str] = {}
+    recall: dict[str, float] = {}
 
-    output_shape = session.get_outputs()[0].shape
-    if output_shape[-1] not in (len(classes), None, "classes"):
-        raise RuntimeError(
-            f"wide9 ให้ผลลัพธ์ {output_shape} ไม่ตรงกับ {len(classes)} คลาสใน {labels_path.name}"
-        )
+    for model_path in paths:
+        # wide9.onnx -> wide9.labels.json (ชื่อเดียวกัน คนละนามสกุล)
+        labels_path = model_path.with_suffix(".labels.json")
+        if not labels_path.is_file():
+            raise RuntimeError(
+                f"พบไฟล์โมเดล {model_path.name} แต่ไม่พบ {labels_path.name} "
+                "ซึ่งเก็บลำดับคลาสและที่มาของข้อมูลเทรน — ถ้าปล่อยผ่านจะจับคู่คลาสผิดตัว"
+            )
+        payload = json.loads(labels_path.read_text(encoding="utf-8"))
+        member_classes: list[str] = payload["labels"]
+        member_size = int(payload.get("input_size", 224))
 
+        if base is None:
+            base = payload
+            classes = member_classes
+            size = member_size
+            tiers = dict(payload.get("class_tiers") or {})
+            recall = dict(payload.get("per_class_recall") or {})
+        elif member_classes != classes or member_size != size:
+            raise RuntimeError(
+                f"โมเดล {model_path.name} มีคลาสหรือขนาดภาพไม่ตรงกับตัวแรก "
+                "จึงเฉลี่ยผลเข้าด้วยกันไม่ได้ ความน่าจะเป็นจะถูกบวกข้ามคลาสกัน"
+            )
+
+        session, input_name, output_name, digest = _load_session(model_path)
+        output_shape = session.get_outputs()[0].shape
+        if output_shape[-1] not in (len(classes), None, "classes"):
+            raise RuntimeError(
+                f"wide9 ({model_path.name}) ให้ผลลัพธ์ {output_shape} "
+                f"ไม่ตรงกับ {len(classes)} คลาสใน {labels_path.name}"
+            )
+        # temperature ที่ fit ไว้บนชุดตรวจสอบของโมเดลตัวนั้น หารกับ logits ก่อน softmax
+        # ไม่เปลี่ยนลำดับคลาสจึงไม่กระทบความแม่นยำ แต่ทำให้ตัวเลขใกล้ความจริงขึ้น
+        temperature = float(payload.get("temperature") or 1.0)
+        if temperature <= 0:
+            temperature = 1.0
+        sessions.append((session, input_name, output_name, temperature, digest))
+
+    if base is None or not sessions:
+        raise RuntimeError("ไม่มีไฟล์โมเดล wide9 ที่โหลดได้")
+
+    arch = str(base.get("arch", "onnx"))
+    version = f"{arch}@{'+'.join(d for *_rest, d in sessions)}"
     proxy = sorted(c for c, t in tiers.items() if t == "symptom_proxy")
+    tta_enabled = _wide9_tta_enabled()
+    measured_accuracy = base.get("val_accuracy")
+    measured_ece = base.get("val_ece")
 
     def predict(image: Image.Image, mode: str, _context: dict[str, Any]) -> dict[str, Any]:
         started = time.perf_counter()
         quality, lesions = leafcheck.analyse(image)
 
-        base = _preprocess_at(image, size)
-        views = [_flip(base, v) for v in (FLIP_VIEWS if mode != "fast" else FLIP_VIEWS[:1])]
-        stacked = np.ascontiguousarray(np.concatenate(views, axis=0), dtype=np.float32)
-        logits = session.run([output_name], {input_name: stacked})[0]
-        probs = softmax(logits.mean(axis=0, keepdims=True))[0]
+        views = WIDE9_SINGLE_VIEW if (mode == "fast" or not tta_enabled) else WIDE9_TTA_VIEWS
+        batch = _wide9_batch(image, size, views)
 
-        # ลดน้ำหนักตามที่มาของข้อมูลเทรน แล้วหาผู้ชนะจากคะแนนที่ถ่วงแล้ว
+        member_probs = []
+        for session, input_name, output_name, temperature, _digest in sessions:
+            logits = np.asarray(
+                session.run([output_name], {input_name: batch})[0], dtype=np.float32
+            )
+            logits = logits.reshape(-1, logits.shape[-1])
+            member_probs.append(softmax(logits / temperature).mean(axis=0))
+        probs = np.mean(member_probs, axis=0)
+
+        # ลดน้ำหนักตามที่มาของข้อมูลเทรนและ recall จริง แล้วหาผู้ชนะจากคะแนนที่ถ่วงแล้ว
         weighted = {
-            cls: float(p) * TIER_WEIGHT.get(tiers.get(cls, "direct"), 1.0)
+            cls: float(p) * _reliability_weight(tiers.get(cls, "direct"), recall.get(cls))
             for cls, p in zip(classes, probs)
         }
         winner = max(weighted, key=lambda c: weighted[c])
         winner_tier = tiers.get(winner, "direct")
+        winner_recall = recall.get(winner)
 
         note = (
-            "ผลนี้ยังไม่ได้ปรับเทียบเป็นความน่าจะเป็นจริง และไม่ใช่คำวินิจฉัย "
-            "ความมั่นใจถูกลดน้ำหนักตามที่มาของภาพที่ใช้เทรนแต่ละคลาสแล้ว"
+            "ผลนี้ไม่ใช่คำวินิจฉัย ความมั่นใจถูกลดน้ำหนักตามที่มาของภาพที่ใช้เทรน "
+            "และตามความสามารถจับคลาสนั้นได้จริงบนชุดตรวจสอบแล้ว"
         )
         if winner_tier == "symptom_proxy":
             note += (
                 f" คลาส {winner} {TIER_NOTE_TH[winner_tier]} "
                 "ต้องยืนยันด้วยการตรวจอาการในแปลงก่อนตัดสินใจใช้สารเคมี"
+            )
+        if winner_recall is not None and winner_recall < 0.5:
+            note += (
+                f" บนชุดตรวจสอบ โมเดลจับคลาสนี้ได้เพียง {winner_recall * 100:.0f}% "
+                "ของกรณีที่เป็นคลาสนี้จริง จึงพลาดได้บ่อยกว่าที่ตัวเลขความมั่นใจชวนให้คิด"
             )
 
         return {
@@ -282,58 +423,86 @@ def _build_wide9(model_path: Path) -> Engine:
             "model_version": version,
             "note": note,
             "engine": "wide9",
-            "engine_version": "wide9-1.0.0",
+            "engine_version": "wide9-2.0.0",
             "mode": mode,
             "abstain": not quality.usable,
             "quality": quality.to_dict(),
             "lesions": lesions.to_dict(),
             "calibration": {
-                "temperature": 1.0,
-                "fitted": False,
-                "source": "none",
-                "note": "โมเดลนี้ยังไม่ได้ปรับเทียบอุณหภูมิ คะแนนเป็น softmax ดิบที่ถ่วงน้ำหนักที่มาแล้ว",
+                # ปรับ temperature แล้วจริง แต่ปรับบนภาพพืชอื่น ไม่ใช่ภาพแตงโม
+                # จึงยังไม่เรียกตัวเลขนี้ว่าความน่าจะเป็นของแตงโม ดู ``calibrated`` ด้านล่าง
+                "temperature": [round(t, 4) for *_r, t, _d in sessions]
+                if len(sessions) > 1
+                else round(sessions[0][3], 4),
+                "fitted": True,
+                "source": "temperature scaling บนชุดตรวจสอบของชุดข้อมูลที่ใช้เทรน",
+                "measured_ece": measured_ece,
+                "note": (
+                    "ปรับ temperature บนชุดตรวจสอบแล้ว แต่ชุดนั้นเป็นภาพพืชอื่น "
+                    "ไม่ใช่ภาพแตงโม ตัวเลขจึงใกล้ความถูกต้องจริงกว่า softmax ดิบ "
+                    "แต่ยังอ้างเป็นความน่าจะเป็นบนแปลงแตงโมไม่ได้"
+                ),
             },
             "class_provenance": {
                 "tier": winner_tier,
                 "note_th": TIER_NOTE_TH.get(winner_tier, winner_tier),
-                "weight_applied": TIER_WEIGHT.get(winner_tier, 1.0),
+                "weight_applied": round(_reliability_weight(winner_tier, winner_recall), 4),
+                "tier_weight": TIER_WEIGHT.get(winner_tier, 1.0),
+                "class_recall": winner_recall,
                 "proxy_classes": proxy,
             },
             "per_class_recall": recall,
             "views": len(views),
+            "ensemble_size": len(sessions),
             "inference_ms": round((time.perf_counter() - started) * 1000, 1),
         }
 
+    accuracy_line = (
+        f"วัดได้ {measured_accuracy * 100:.1f}% บนชุดตรวจสอบของชุดข้อมูลที่ใช้เทรน "
+        if isinstance(measured_accuracy, (int, float))
+        else ""
+    )
+
     return Engine(
         name="wide9",
-        title_th="โมเดลกว้าง 9 คลาส (ยังไม่ปรับเทียบ)",
+        title_th="โมเดลกว้าง 9 คลาส",
         classes=classes,
         image_size=size,
         model_version=version,
         description_th=(
             "ครอบคลุมโรคมากกว่าโมเดลหลัก แต่บางคลาสเทรนจากภาพโรคของพืชอื่น "
             "ที่เชื้อเดียวกันหรืออาการคล้ายกัน เพราะยังไม่มีชุดภาพแตงโมที่ใหญ่พอ "
-            "ความมั่นใจของคลาสเหล่านั้นถูกลดน้ำหนักตามที่มาแล้ว"
+            "ความมั่นใจของคลาสเหล่านั้นถูกลดน้ำหนักตามที่มาและตาม recall จริงแล้ว"
         ),
         good_for_th=[
             "คัดกรองกว้างเมื่อยังไม่รู้ว่าอาการเข้าข่ายโรคกลุ่มใด",
             "ตรวจราแป้ง ซึ่งเป็นคลาสที่เชื้อตรงกับแตงโมและวัด recall ได้สูงสุด",
         ],
         limits_th=[
-            "ยังไม่ปรับเทียบความน่าจะเป็น ตัวเลขความมั่นใจมักสูงกว่าความถูกต้องจริง",
+            accuracy_line + "ซึ่งเป็นภาพพืชอื่น ไม่ใช่ภาพแตงโม "
+            "ความแม่นจริงบนแปลงแตงโมยังไม่มีใครวัด",
+            "ปรับ temperature แล้วแต่ปรับบนภาพพืชอื่น ตัวเลขความมั่นใจจึงยังไม่ใช่ "
+            "ความน่าจะเป็นบนแปลงแตงโม",
             "คลาสที่เทรนจากภาพตัวแทนข้ามพืช (" + ", ".join(proxy) + ") เชื่อถือได้น้อยที่สุด"
             if proxy
             else "ไม่มีคลาสที่เทรนจากภาพตัวแทนข้ามพืช",
-            "วัดผลบนภาพพืชอื่น ไม่ใช่ภาพแตงโม ความแม่นจริงบนแปลงยังไม่มีใครวัด",
         ],
+        # ยังเป็น False โดยเจตนา: ชุดที่ใช้ปรับเทียบไม่ใช่โดเมนที่นำไปใช้งาน
+        # การตั้งเป็น True จะทำให้หน้าจอได้รับอนุญาตให้เขียนว่าตัวเลขคือความน่าจะเป็น
+        # ซึ่งยังไม่จริงสำหรับแปลงแตงโม แม้ ECE บนชุดตรวจสอบจะวัดไว้แล้ว
         calibrated=False,
         predict=predict,
         class_tiers=tiers,
         metrics={
-            "val_accuracy": payload.get("val_accuracy"),
+            "val_accuracy": measured_accuracy,
+            "val_macro_recall": base.get("val_macro_recall"),
+            "val_nll": base.get("val_nll"),
+            "val_ece": measured_ece,
             "per_class_recall": recall,
-            "train_images": payload.get("train_images"),
-            "measured_on": "ภาพโรคของพืชอื่นที่ใช้เป็นตัวแทน ไม่ใช่ภาพแตงโม",
+            "train_images": base.get("train_images"),
+            "measured_with": base.get("metrics_measured_with"),
+            "ensemble_members": [p.name for p in paths],
+            "tta_views": len(WIDE9_TTA_VIEWS) if tta_enabled else len(WIDE9_SINGLE_VIEW),
         },
     )
 
@@ -653,9 +822,10 @@ def build_registry(
         )
     }
 
-    wide_path = Path(os.getenv("WIDE9_MODEL_PATH", HERE / "wide9.onnx"))
-    if wide_path.is_file():
-        registry["wide9"] = _build_wide9(wide_path)
+    # รับได้ทั้งไฟล์เดียวและหลายไฟล์คั่นด้วยจุลภาค เพื่อทำ ensemble โดยไม่ต้องแก้โค้ด
+    wide_paths = [p for p in _wide9_paths(os.getenv("WIDE9_MODEL_PATH", ""), HERE / "wide9.onnx") if p.is_file()]
+    if wide_paths:
+        registry["wide9"] = _build_wide9(wide_paths)
 
     # claude ปรากฏเฉพาะเมื่อตั้ง VISION_ENABLE_CLAUDE=1 และมีคีย์กับ SDK ครบ
     # ไม่ใส่ไว้แบบ "มีแต่เรียกไม่ได้" เพราะผู้เรียกจะเลือกแล้วพังตอนใช้งานจริง

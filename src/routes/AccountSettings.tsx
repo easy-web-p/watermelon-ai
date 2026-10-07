@@ -626,15 +626,8 @@ export function AccountSettings() {
                           </span>
                         </div>
                         <Meter
-                          value={scorePassword(newPassword)}
-                          max={4}
-                          tone={
-                            scorePassword(newPassword) < 2
-                              ? 'error'
-                              : scorePassword(newPassword) < 3
-                                ? 'primary'
-                                : 'secondary'
-                          }
+                          value={(scorePassword(newPassword) / 4) * 100}
+                          tone={scorePassword(newPassword) < 3 ? 'primary' : 'secondary'}
                         />
                       </div>
                     )}

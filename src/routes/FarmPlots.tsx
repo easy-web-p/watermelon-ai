@@ -12,28 +12,15 @@ import { api, ApiError, NetworkError, type DiseaseRecord } from '../lib/api';
 import { getLocalDiseaseHistory } from '../lib/chatHistory';
 import { useToast } from '../components/ui/Toast';
 import { AddPlotModal, type NewPlot } from '../components/domain/AddPlotModal';
+import { ZoneDetailModal, type ZoneData } from '../components/domain/ZoneDetailModal';
+import { ActionPlanModal } from '../components/domain/ActionPlanModal';
+import { EditPlotModal, type EditablePlot, type PlotHealth } from '../components/domain/EditPlotModal';
+import { AddActivityModal, type FarmActivity } from '../components/domain/AddActivityModal';
 import { CULTIVARS } from '../data/cultivars';
 
-type PlotHealth = 'ดีเยี่ยม' | 'เฝ้าระวัง' | 'ต้องดูแลด่วน';
+export type Plot = EditablePlot;
 
-type Plot = {
-  id: string;
-  name: string;
-  location: string;
-  size: string;
-  cultivar: string;
-  stage: string;
-  day: number;
-  totalDays: number;
-  health: PlotHealth;
-  moisture: number;
-  brix: number;
-  expectedYield: string;
-  harvest: string;
-  alert?: string;
-};
-
-const PLOTS: readonly Plot[] = [
+const DEFAULT_PLOTS: readonly Plot[] = [
   {
     id: 'plot-1',
     name: 'แปลงที่ 1 — ทุ่งเหนือ',
@@ -98,11 +85,81 @@ const PLOTS: readonly Plot[] = [
   },
 ];
 
+const DEFAULT_ACTIVITIES: FarmActivity[] = [
+  {
+    id: 'act-sample-1',
+    plotId: 'plot-1',
+    type: 'ให้น้ำ',
+    title: 'ให้น้ำหยดตามรอบปกติ 45 นาที',
+    detail: 'ความชื้นดินหลังให้น้ำ 68% ท่อส่งน้ำแรงดันสม่ำเสมอ',
+    timestamp: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+    operator: 'สมหมาย',
+  },
+  {
+    id: 'act-sample-2',
+    plotId: 'plot-1',
+    type: 'วัดความหวาน Brix',
+    title: 'สุ่มวัดความหวานแตงโม 3 ผล',
+    detail: 'ค่าเฉลี่ย 10.8°Bx (ผลที่ 1: 10.5, ผลที่ 2: 11.0, ผลที่ 3: 10.9) เนื้อแน่น กรอบ',
+    timestamp: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+    operator: 'สมหมาย',
+  },
+  {
+    id: 'act-sample-3',
+    plotId: 'plot-2',
+    type: 'ใส่ปุ๋ย',
+    title: 'ให้ปุ๋ยทางระบบน้ำ สูตร 0-0-50 + โบรอน',
+    detail: 'เสริมสะสมแป้งและน้ำตาล อัตรา 1.5 กก./ไร่',
+    timestamp: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
+    cost: 450,
+    operator: 'สมหมาย',
+  },
+  {
+    id: 'act-sample-4',
+    plotId: 'plot-3',
+    type: 'พ่นสารป้องกัน/กำจัด',
+    title: 'พ่นสารกำจัดราน้ำค้าง ไดเมโทมอร์ฟ 50% WDG',
+    detail: 'พ่นเน้นใต้ใบโซนตะวันออกตามคำแนะนำของ AI PHI 7 วัน',
+    timestamp: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
+    cost: 320,
+    operator: 'ลุงเปี๊ยก',
+  },
+];
+
 const HEALTH_TONE: Record<PlotHealth, { badge: 'secondary' | 'primary' | 'error'; ring: string }> = {
   ดีเยี่ยม: { badge: 'secondary', ring: 'ring-secondary/30' },
   เฝ้าระวัง: { badge: 'primary', ring: 'ring-primary/30' },
   ต้องดูแลด่วน: { badge: 'error', ring: 'ring-error/40' },
 };
+
+const STORAGE_PLOTS_KEY = 'wm_farm_plots_v2';
+const STORAGE_ACTIVITIES_KEY = 'wm_farm_activities_v2';
+
+function loadPersistedPlots(): Plot[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_PLOTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {
+    // fallback
+  }
+  return [...DEFAULT_PLOTS];
+}
+
+function loadPersistedActivities(): FarmActivity[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_ACTIVITIES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // fallback
+  }
+  return [...DEFAULT_ACTIVITIES];
+}
 
 /** Relative time in Thai, for the scan history feed. */
 function timeAgo(iso: string): string {
@@ -134,65 +191,55 @@ function parsePlotYieldTons(yieldStr: string): number {
 
 export function FarmPlots() {
   const { navigate } = useRouter();
-  const [selectedId, setSelectedId] = useState(PLOTS[1].id);
-  const [history, setHistory] = useState<DiseaseRecord[] | null>(null);
-  const [historyError, setHistoryError] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
-  const [extraPlots, setExtraPlots] = useState<NewPlot[]>([]);
   const toast = useToast();
 
-  const allPlots: Plot[] = useMemo(() => {
-    const extraMapped: Plot[] = extraPlots.map((p, idx) => {
-      const cultivar = CULTIVARS.find((c) => c.id === p.cultivarId);
-      const cultivarName = cultivar?.name ?? 'ตอร์ปิโด';
-      const totalDays = cultivar?.days ?? 65;
+  const [plots, setPlots] = useState<Plot[]>(loadPersistedPlots);
+  const [selectedId, setSelectedId] = useState(() => (plots.length > 1 ? plots[1].id : plots[0]?.id || 'plot-1'));
+  const [activities, setActivities] = useState<FarmActivity[]>(loadPersistedActivities);
 
-      const plantedDate = new Date(p.plantedOn);
-      const validPlanted = !Number.isNaN(plantedDate.getTime());
-      const now = Date.now();
-      const daysPassed = validPlanted ? Math.max(1, Math.floor((now - plantedDate.getTime()) / (1000 * 60 * 60 * 24))) : 1;
-      const day = Math.min(daysPassed, totalDays);
+  const [history, setHistory] = useState<DiseaseRecord[] | null>(null);
+  const [historyError, setHistoryError] = useState(false);
+  const [historyFilterPlotOnly, setHistoryFilterPlotOnly] = useState(false);
 
-      let stage = 'ต้นกล้า & แตกใบ';
-      if (day >= totalDays) stage = 'เก็บเกี่ยวแล้ว';
-      else if (day >= 40) stage = 'ขยายผล & สะสมแป้ง';
-      else if (day >= 25) stage = 'ออกดอก & ผสมเกสร';
-      else if (day >= 12) stage = 'เลื้อยเถา';
+  // Modals
+  const [addOpen, setAddOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [actionPlanOpen, setActionPlanOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [selectedZone, setSelectedZone] = useState<ZoneData | null>(null);
+  const [zoneOpen, setZoneOpen] = useState(false);
 
-      const harvestDateObj = validPlanted ? new Date(plantedDate.getTime() + totalDays * 24 * 60 * 60 * 1000) : new Date();
-      const harvestStr = harvestDateObj.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+  // Save plots to localStorage whenever updated
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_PLOTS_KEY, JSON.stringify(plots));
+    } catch {
+      // ignore
+    }
+  }, [plots]);
 
-      const areaRai = p.rai + p.ngan / 4 + p.wa / 400;
-      const expectedYieldNum = (areaRai * 3.7).toFixed(1);
+  // Save activities to localStorage whenever updated
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_ACTIVITIES_KEY, JSON.stringify(activities));
+    } catch {
+      // ignore
+    }
+  }, [activities]);
 
-      const sizeStr = `${p.rai} ไร่${p.ngan > 0 ? ` ${p.ngan} งาน` : ''}${p.wa > 0 ? ` ${p.wa} ตร.ว.` : ''}`;
+  const selected = useMemo(() => {
+    return plots.find((plot) => plot.id === selectedId) ?? plots[0] ?? DEFAULT_PLOTS[0];
+  }, [plots, selectedId]);
 
-      return {
-        id: `custom-plot-${idx + 1}`,
-        name: p.name || `แปลงใหม่ ${idx + 1}`,
-        location: p.province ? `จ.${p.province}` : 'ไม่ระบุสถานที่',
-        size: sizeStr,
-        cultivar: cultivarName,
-        stage,
-        day,
-        totalDays,
-        health: 'ดีเยี่ยม' as PlotHealth,
-        moisture: 72,
-        brix: day >= 45 ? 11.2 : 0,
-        expectedYield: `${expectedYieldNum} ตัน`,
-        harvest: harvestStr,
-        alert: undefined,
-      };
-    });
+  const activePlots = plots.filter((plot) => plot.stage !== 'เก็บเกี่ยวแล้ว');
+  const alertCount = plots.filter((plot) => Boolean(plot.alert)).length;
 
-    return [...PLOTS, ...extraMapped];
-  }, [extraPlots]);
+  const totalAreaRai = plots.reduce((sum, p) => sum + parsePlotRai(p.size), 0);
+  const totalYieldTons = plots.reduce((sum, p) => sum + parsePlotYieldTons(p.expectedYield), 0);
 
-  const selected = allPlots.find((plot) => plot.id === selectedId) ?? allPlots[0];
-  const activePlots = allPlots.filter((plot) => plot.stage !== 'เก็บเกี่ยวแล้ว');
-
-  const totalAreaRai = allPlots.reduce((sum, p) => sum + parsePlotRai(p.size), 0);
-  const totalYieldTons = allPlots.reduce((sum, p) => sum + parsePlotYieldTons(p.expectedYield), 0);
+  const selectedPlotActivities = useMemo(() => {
+    return activities.filter((a) => a.plotId === selected.id);
+  }, [activities, selected.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,7 +268,6 @@ export function FarmPlots() {
             (err instanceof ApiError && (err.status === 404 || err.status === 502)) ||
             err instanceof NetworkError;
           if (isOffline) {
-            // Keep local records intact when offline
             if (local.length > 0) setHistory(local);
           } else {
             setHistoryError(true);
@@ -233,6 +279,129 @@ export function FarmPlots() {
     };
   }, []);
 
+  function handleCreatePlot(p: NewPlot) {
+    const cultivar = CULTIVARS.find((c) => c.id === p.cultivarId);
+    const cultivarName = cultivar?.name ?? 'ตอร์ปิโด';
+    const totalDays = cultivar?.days ?? 65;
+
+    const plantedDate = new Date(p.plantedOn);
+    const validPlanted = !Number.isNaN(plantedDate.getTime());
+    const now = Date.now();
+    const daysPassed = validPlanted ? Math.max(1, Math.floor((now - plantedDate.getTime()) / (1000 * 60 * 60 * 24))) : 1;
+    const day = Math.min(daysPassed, totalDays);
+
+    let stage = 'ต้นกล้า & แตกใบ';
+    if (day >= totalDays) stage = 'เก็บเกี่ยวแล้ว';
+    else if (day >= 40) stage = 'ขยายผล & สะสมแป้ง';
+    else if (day >= 25) stage = 'ออกดอก & ผสมเกสร';
+    else if (day >= 12) stage = 'เลื้อยเถา';
+
+    const harvestDateObj = validPlanted ? new Date(plantedDate.getTime() + totalDays * 24 * 60 * 60 * 1000) : new Date();
+    const harvestStr = harvestDateObj.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    const areaRai = p.rai + p.ngan / 4 + p.wa / 400;
+    const expectedYieldNum = (areaRai * 3.7).toFixed(1);
+    const sizeStr = `${p.rai} ไร่${p.ngan > 0 ? ` ${p.ngan} งาน` : ''}${p.wa > 0 ? ` ${p.wa} ตร.ว.` : ''}`;
+    const newId = `plot-${Date.now()}`;
+
+    const newPlot: Plot = {
+      id: newId,
+      name: p.name || `แปลงใหม่ ${plots.length + 1}`,
+      location: p.province ? `จ.${p.province}` : 'ไม่ระบุสถานที่',
+      size: sizeStr,
+      cultivar: cultivarName,
+      stage,
+      day,
+      totalDays,
+      health: 'ดีเยี่ยม',
+      moisture: 70,
+      brix: day >= 45 ? 11.0 : 0,
+      expectedYield: `${expectedYieldNum} ตัน`,
+      harvest: harvestStr,
+      alert: undefined,
+    };
+
+    setPlots((prev) => [...prev, newPlot]);
+    setSelectedId(newId);
+    toast.success(`เพิ่มแปลง "${newPlot.name}" เรียบร้อยแล้ว`);
+  }
+
+  function handleSavePlot(updated: EditablePlot) {
+    setPlots((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    toast.success(`บันทึกข้อมูล "${updated.name}" สำเร็จ`);
+  }
+
+  function handleDeletePlot(plotId: string) {
+    if (plots.length <= 1) {
+      toast.error('ต้องมีแปลงเพาะปลูกอย่างน้อย 1 แปลงในระบบ');
+      return;
+    }
+    const remaining = plots.filter((p) => p.id !== plotId);
+    setPlots(remaining);
+    setSelectedId(remaining[0].id);
+    toast.success('ลบแปลงเพาะปลูกเรียบร้อยแล้ว');
+  }
+
+  function handleResolveAlert() {
+    setPlots((prev) =>
+      prev.map((p) =>
+        p.id === selected.id
+          ? {
+              ...p,
+              alert: undefined,
+              health: 'ดีเยี่ยม',
+              moisture: Math.max(p.moisture, 65),
+            }
+          : p,
+      ),
+    );
+  }
+
+  function handleAddActivity(activity: FarmActivity) {
+    setActivities((prev) => [activity, ...prev]);
+    toast.success(`บันทึกกิจกรรม "${activity.title}" สำเร็จ`);
+  }
+
+  function handleDeleteActivity(activityId: string) {
+    setActivities((prev) => prev.filter((a) => a.id !== activityId));
+    toast.success('ลบรายการกิจกรรมเรียบร้อยแล้ว');
+  }
+
+  function handleUpdateZoneMoisture(_zoneIndex: number, newMoisture: number) {
+    setPlots((prev) =>
+      prev.map((p) =>
+        p.id === selected.id
+          ? {
+              ...p,
+              moisture: Math.round((p.moisture + newMoisture) / 2),
+            }
+          : p,
+      ),
+    );
+    // Auto log irrigation activity
+    const autoAct: FarmActivity = {
+      id: `act-${Date.now()}`,
+      plotId: selected.id,
+      type: 'ให้น้ำ',
+      title: `เปิดน้ำหยดโซน ${selectedZone?.name || ''} 45 นาที`,
+      detail: `ปรับระดับความชื้นโซนเป็น ${newMoisture}% สภาพระบบทำงานปกติ`,
+      timestamp: new Date().toISOString(),
+      operator: 'ระบบอัตโนมัติ / ผู้จัดการแปลง',
+    };
+    setActivities((prev) => [autoAct, ...prev]);
+  }
+
+  const filteredHistory = useMemo(() => {
+    if (!history) return null;
+    if (!historyFilterPlotOnly) return history;
+    const matchNum = selected.name.match(/แปลงที่\s*(\d+)/)?.[1];
+    return history.filter((r) => {
+      if (r.farmId.includes(selected.name) || r.farmId.includes(selected.id)) return true;
+      if (matchNum && (r.farmId.includes(`แปลง ${matchNum}`) || r.farmId.includes(`แปลงที่ ${matchNum}`))) return true;
+      return false;
+    });
+  }, [history, historyFilterPlotOnly, selected.name, selected.id]);
+
   return (
     <AppShell>
       <PageContainer>
@@ -243,11 +412,11 @@ export function FarmPlots() {
                 <Icon name="map" size={14} />
                 ระบบจัดการแปลงเพาะปลูก
               </Badge>
-              <LiveBadge>เซนเซอร์ออนไลน์ 3 แปลง</LiveBadge>
+              <LiveBadge>เซนเซอร์ออนไลน์ {Math.min(plots.length, 3)} แปลง</LiveBadge>
             </>
           }
           title="จัดการแปลงเพาะปลูกแตงโม"
-          description="ภาพรวมสุขภาพแปลง ความชื้นดิน ระยะการเติบโต และการแจ้งเตือนที่ต้องลงมือทำในแต่ละแปลง"
+          description="ภาพรวมสุขภาพแปลง แผนผังโซน ความชื้นดิน สมุดบันทึกกิจกรรม GAP และการแจ้งเตือนที่ต้องลงมือทำ"
           actions={
             <div className="flex items-center gap-2">
               <Button
@@ -276,7 +445,7 @@ export function FarmPlots() {
             unit="ไร่"
             icon="landscape"
             tone="neutral"
-            footnote={extraPlots.length ? `รวมแปลงที่เพิ่งเพิ่ม ${extraPlots.length} แปลง` : undefined}
+            footnote={`จากทั้งหมด ${plots.length} แปลงในระบบ`}
           />
           <StatTile
             label="แปลงที่กำลังเพาะปลูก"
@@ -284,7 +453,7 @@ export function FarmPlots() {
             unit="แปลง"
             icon="potted_plant"
             tone="secondary"
-            footnote={`จากทั้งหมด ${allPlots.length} แปลงที่ลงทะเบียน`}
+            footnote={`เก็บเกี่ยวแล้ว ${plots.length - activePlots.length} แปลง`}
           />
           <StatTile
             label="ผลผลิตคาดการณ์รวมรอบนี้"
@@ -296,18 +465,23 @@ export function FarmPlots() {
           />
           <StatTile
             label="การแจ้งเตือนที่รอดำเนินการ"
-            value="2"
+            value={`${alertCount}`}
             unit="รายการ"
             icon="warning"
-            tone="primary"
-            footnote="1 รายการเร่งด่วน — โรคราน้ำค้าง"
+            tone={alertCount > 0 ? 'primary' : 'neutral'}
+            footnote={alertCount > 0 ? 'คลิกที่แปลงเพื่อดูแผนจัดการ' : 'ทุกแปลงอยู่ในเกณฑ์ปกติ'}
           />
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
+          {/* Plot List (Left column) */}
           <div className="flex flex-col gap-3 lg:col-span-5">
-            {allPlots.map((plot) => {
-              const active = plot.id === selectedId;
+            <div className="flex items-center justify-between px-1">
+              <h3 className="text-label-lg font-bold text-on-surface">รายชื่อแปลงเพาะปลูก ({plots.length})</h3>
+              <span className="text-caption text-on-surface-variant">เลือกแปลงเพื่อดูข้อมูลย่อย</span>
+            </div>
+            {plots.map((plot) => {
+              const active = plot.id === selected.id;
               const tone = HEALTH_TONE[plot.health];
               const retired = plot.stage === 'เก็บเกี่ยวแล้ว';
 
@@ -368,19 +542,37 @@ export function FarmPlots() {
             })}
           </div>
 
+          {/* Plot Details (Right column) */}
           <div className="flex flex-col gap-4 lg:col-span-7">
+            {/* Main Plot Overview Card */}
             <Card>
               <CardHeader
                 icon="dashboard"
                 title={selected.name}
                 subtitle={`${selected.cultivar} • ${selected.size} • ${selected.stage}`}
-                action={<Badge tone={HEALTH_TONE[selected.health].badge}>{selected.health}</Badge>}
+                action={
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditOpen(true)}
+                      className="h-8 text-xs"
+                    >
+                      <Icon name="edit" size={14} />
+                      แก้ไขแปลง
+                    </Button>
+                    <Badge tone={HEALTH_TONE[selected.health].badge}>{selected.health}</Badge>
+                  </div>
+                }
               />
 
-              {/* Plot map: rows of beds with the problem zone highlighted */}
+              {/* Interactive Plot Grid: rows of beds with clickable zones */}
               <div className="rounded-lg bg-gradient-to-br from-mint-mist to-surface-low p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-label-lg font-semibold text-on-surface">แผนผังแปลงและโซนเพาะปลูก</span>
+                  <div>
+                    <span className="text-label-lg font-semibold text-on-surface">แผนผังแปลงและโซนเพาะปลูก</span>
+                    <p className="text-[11px] text-on-surface-variant">คลิกที่ช่องเพื่อดูสถานะเซนเซอร์และเปิดน้ำหยดเฉพาะโซน</p>
+                  </div>
                   <div className="flex flex-wrap items-center gap-3 text-caption text-on-surface-variant">
                     <span className="flex items-center gap-1.5">
                       <span className="size-2.5 rounded-sm bg-secondary" />
@@ -397,24 +589,49 @@ export function FarmPlots() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-8 gap-1.5" role="img" aria-label={`แผนผังแปลง ${selected.name}`}>
+                <div className="grid grid-cols-8 gap-1.5" role="region" aria-label={`แผนผังแปลง ${selected.name}`}>
                   {Array.from({ length: 40 }, (_, index) => {
+                    const row = Math.floor(index / 8) + 1;
+                    const col = (index % 8) + 1;
                     const warn = selected.health !== 'ดีเยี่ยม' && [6, 7, 14, 15, 22].includes(index);
                     const empty = index >= 36;
+                    const zoneName = `โซน ${String.fromCharCode(65 + Math.floor(index / 8))}-${col}`;
+                    const zoneMoisture = empty ? 0 : warn ? Math.max(35, selected.moisture - 14) : selected.moisture || 68;
+
                     return (
-                      <span
+                      <button
                         key={index}
+                        type="button"
+                        onClick={() => {
+                          setSelectedZone({
+                            index,
+                            name: zoneName,
+                            status: empty ? 'ยังไม่ปลูก' : warn ? 'เฝ้าระวัง' : 'ปกติ',
+                            warn,
+                            empty,
+                            moisture: zoneMoisture,
+                          });
+                          setZoneOpen(true);
+                        }}
+                        title={`${zoneName} (แถว ${row} ร่อง ${col}): ${
+                          empty ? 'ยังไม่ปลูก' : warn ? `เฝ้าระวัง (ความชื้น ${zoneMoisture}%)` : `ปกติ (ความชื้น ${zoneMoisture}%)`
+                        } — คลิกเพื่อดูรายละเอียด`}
                         className={cn(
-                          'aspect-square rounded-sm transition-colors',
+                          'group relative aspect-square cursor-pointer rounded-sm transition-all hover:scale-110 hover:ring-2 hover:ring-on-surface/40 hover:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                           empty ? 'bg-surface-highest' : warn ? 'bg-primary' : 'bg-secondary',
                           warn && 'animate-pulse',
                         )}
-                      />
+                      >
+                        <span className="sr-only">
+                          {zoneName}: แถว {row} ร่อง {col}
+                        </span>
+                      </button>
                     );
                   })}
                 </div>
               </div>
 
+              {/* Plot metrics */}
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
                   {
@@ -442,20 +659,14 @@ export function FarmPlots() {
                 ))}
               </div>
 
+              {/* Alert box */}
               {selected.alert ? (
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-melon-tint p-4">
                   <p className="flex min-w-0 items-start gap-2 text-body-md text-on-surface-variant">
                     <Icon name="priority_high" size={18} className="mt-0.5 shrink-0 text-primary" />
                     {selected.alert}
                   </p>
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      navigate(`/chat?q=${encodeURIComponent(
-                        `${selected.name}: ${selected.alert} ควรจัดการอย่างไรครับ`,
-                      )}`)
-                    }
-                  >
+                  <Button size="sm" onClick={() => setActionPlanOpen(true)}>
                     ดูแผนจัดการ
                   </Button>
                 </div>
@@ -508,6 +719,101 @@ export function FarmPlots() {
               </div>
             </Card>
 
+            {/* Farm Activity Log (GAP Log Book) Card */}
+            <Card>
+              <CardHeader
+                icon="assignment"
+                iconTone="secondary"
+                title={`สมุดบันทึกกิจกรรมประจำแปลง (${selectedPlotActivities.length})`}
+                subtitle="บันทึกการให้น้ำ ใส่ปุ๋ย พ่นยา และวัดค่าความหวานตามมาตรฐาน GAP"
+                action={
+                  <Button size="sm" onClick={() => setActivityOpen(true)}>
+                    <Icon name="add" size={16} />
+                    + บันทึกงาน
+                  </Button>
+                }
+              />
+
+              {selectedPlotActivities.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-6 text-center">
+                  <Icon name="assignment_late" size={32} className="text-outline" />
+                  <p className="text-body-md text-on-surface-variant">
+                    ยังไม่มีบันทึกกิจกรรมสำหรับ {selected.name}
+                  </p>
+                  <Button variant="ghost" size="sm" onClick={() => setActivityOpen(true)}>
+                    เริ่มบันทึกกิจกรรมแรก
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedPlotActivities.map((act) => {
+                    const icon =
+                      act.type === 'ให้น้ำ'
+                        ? 'water_drop'
+                        : act.type === 'ใส่ปุ๋ย'
+                          ? 'science'
+                          : act.type === 'พ่นสารป้องกัน/กำจัด'
+                            ? 'pest_control'
+                            : act.type === 'วัดความหวาน Brix'
+                              ? 'speed'
+                              : 'check_circle';
+
+                    const tone =
+                      act.type === 'ให้น้ำ'
+                        ? 'bg-secondary/15 text-secondary'
+                        : act.type === 'พ่นสารป้องกัน/กำจัด'
+                          ? 'bg-primary/15 text-primary'
+                          : 'bg-surface-container text-on-surface';
+
+                    return (
+                      <div
+                        key={act.id}
+                        className="group flex items-start justify-between gap-3 rounded-xl border border-outline-variant/30 bg-surface-low p-3.5 transition-all hover:bg-surface-container/60"
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg', tone)}>
+                            <Icon name={icon} size={18} />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-label-md font-bold text-on-surface">{act.title}</span>
+                              <Badge tone="neutral" className="text-[10px] py-0 px-1.5">
+                                {act.type}
+                              </Badge>
+                              {act.cost && (
+                                <Badge tone="secondary" className="text-[10px] py-0 px-1.5">
+                                  {act.cost.toLocaleString('th-TH')} บาท
+                                </Badge>
+                              )}
+                            </div>
+                            {act.detail && (
+                              <p className="mt-1 text-caption text-on-surface-variant leading-relaxed">
+                                {act.detail}
+                              </p>
+                            )}
+                            <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[11px] text-outline">
+                              <span>{timeAgo(act.timestamp)}</span>
+                              {act.operator && <span>โดย {act.operator}</span>}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteActivity(act.id)}
+                          title="ลบรายการนี้"
+                          className="opacity-0 group-hover:opacity-100 p-1 text-outline hover:text-error transition-opacity"
+                        >
+                          <Icon name="delete" size={16} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+
+            {/* AI Diagnosis History Card */}
             <Card>
               <CardHeader
                 icon="history"
@@ -515,7 +821,21 @@ export function FarmPlots() {
                 title="ประวัติการวินิจฉัยโรคด้วย AI"
                 subtitle="ผลสแกนทุกครั้งถูกบันทึกไว้เพื่อติดตามแนวโน้มสุขภาพแปลง"
                 action={
-                  history?.length ? <Badge tone="outline">{history.length} รายการ</Badge> : undefined
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setHistoryFilterPlotOnly((prev) => !prev)}
+                      className={cn(
+                        'rounded-full px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer',
+                        historyFilterPlotOnly
+                          ? 'bg-secondary text-on-secondary'
+                          : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high',
+                      )}
+                    >
+                      {historyFilterPlotOnly ? 'เฉพาะแปลงนี้' : 'ทุกแปลง'}
+                    </button>
+                    {filteredHistory?.length ? <Badge tone="outline">{filteredHistory.length} รายการ</Badge> : undefined}
+                  </div>
                 }
               />
 
@@ -526,7 +846,7 @@ export function FarmPlots() {
                     โหลดประวัติไม่สำเร็จ — ตรวจสอบการเชื่อมต่อแล้วลองใหม่
                   </p>
                 </div>
-              ) : history === null ? (
+              ) : filteredHistory === null ? (
                 <div className="flex flex-col gap-3" aria-busy="true">
                   {[0, 1, 2].map((index) => (
                     <div key={index} className="flex animate-pulse gap-3">
@@ -538,11 +858,13 @@ export function FarmPlots() {
                     </div>
                   ))}
                 </div>
-              ) : history.length === 0 ? (
+              ) : filteredHistory.length === 0 ? (
                 <div className="flex flex-col items-center gap-3 py-8 text-center">
                   <Icon name="document_scanner" size={32} className="text-outline" />
                   <p className="max-w-xs text-body-md text-on-surface-variant">
-                    ยังไม่มีประวัติการสแกน — ถ่ายรูปใบที่สงสัยแล้วให้ AI วินิจฉัยครั้งแรกได้เลย
+                    {historyFilterPlotOnly
+                      ? `ยังไม่มีประวัติการสแกนสำหรับ ${selected.name}`
+                      : 'ยังไม่มีประวัติการสแกน — ถ่ายรูปใบที่สงสัยแล้วให้ AI วินิจฉัยครั้งแรกได้เลย'}
                   </p>
                   <Button size="sm" onClick={() => navigate('/disease-scan')}>
                     <Icon name="photo_camera" size={16} />
@@ -551,7 +873,7 @@ export function FarmPlots() {
                 </div>
               ) : (
                 <ol className="flex flex-col gap-0">
-                  {history.slice(0, 6).map((record, index, array) => {
+                  {filteredHistory.slice(0, 6).map((record, index, array) => {
                     const tone =
                       record.severity_level >= 4
                         ? 'bg-error-container text-on-error-container'
@@ -605,15 +927,60 @@ export function FarmPlots() {
             </Card>
           </div>
         </div>
+
+        {/* Add Plot Modal */}
         <AddPlotModal
           open={addOpen}
           onClose={() => setAddOpen(false)}
-          onCreate={(plot) => {
-            const nextIdx = extraPlots.length;
-            setExtraPlots((prev) => [...prev, plot]);
-            setSelectedId(`custom-plot-${nextIdx + 1}`);
-            toast.success(`เพิ่ม "${plot.name}" เรียบร้อยแล้ว`);
+          onCreate={handleCreatePlot}
+        />
+
+        {/* Edit Plot Modal */}
+        <EditPlotModal
+          open={editOpen}
+          plot={selected}
+          onClose={() => setEditOpen(false)}
+          onSave={handleSavePlot}
+          onDelete={handleDeletePlot}
+        />
+
+        {/* Zone Detail Modal (when clicking any grid cell) */}
+        <ZoneDetailModal
+          open={zoneOpen}
+          plotName={selected.name}
+          zone={selectedZone}
+          onClose={() => setZoneOpen(false)}
+          onUpdateMoisture={handleUpdateZoneMoisture}
+        />
+
+        {/* Action Plan Modal (when clicking "ดูแผนจัดการ") */}
+        <ActionPlanModal
+          open={actionPlanOpen}
+          onClose={() => setActionPlanOpen(false)}
+          plotName={selected.name}
+          alertMessage={selected.alert}
+          onResolveAlert={handleResolveAlert}
+          onLogActivity={(title, detail) => {
+            const act: FarmActivity = {
+              id: `act-${Date.now()}`,
+              plotId: selected.id,
+              type: 'อื่น ๆ',
+              title,
+              detail,
+              timestamp: new Date().toISOString(),
+              operator: 'ผู้จัดการแปลง',
+            };
+            setActivities((prev) => [act, ...prev]);
           }}
+        />
+
+        {/* Add Activity Modal (GAP Log) */}
+        <AddActivityModal
+          open={activityOpen}
+          plotId={selected.id}
+          plotName={selected.name}
+          onClose={() => setActivityOpen(false)}
+          onAdd={handleAddActivity}
         />
       </PageContainer>
     </AppShell>

@@ -309,6 +309,22 @@ export type VisionCompareResponse = {
   disclaimer: string;
 };
 
+/**
+ * ผลการบันทึกผลสแกนลงประวัติการสนทนา แนบมากับคำตอบของ `detectDisease`
+ *
+ * แยกเป็น type ของตัวเองเพราะเป็นเรื่องของการเก็บประวัติ ไม่ใช่ผลวินิจฉัย
+ * การยุบเข้า `DiseaseDetection` จะทำให้ที่อื่นที่รับ `DiseaseDetection`
+ * (เช่น turn ที่อ่านกลับจากประวัติ) ดูเหมือนมีฟิลด์เหล่านี้ด้วยทั้งที่ไม่มี
+ */
+export type ScanFiling = {
+  /** ห้องที่ผลนี้ถูกบันทึกลงไป `null` เมื่อไม่ได้บันทึกฝั่งเซิร์ฟเวอร์ */
+  conversationId: string | null;
+  /** บันทึกไว้กับบัญชีแล้วหรือไม่ `false` สำหรับผู้ที่ยังไม่เข้าสู่ระบบ */
+  historyPersisted: boolean;
+  /** เหตุผลเมื่อไม่ได้บันทึก เป็นข้อความไทยที่แสดงให้ผู้ใช้อ่านได้ ว่างเมื่อบันทึกแล้ว */
+  historyNote: string;
+};
+
 export type DiseaseRecord = {
   id: string;
   detectedAt: string;
@@ -498,8 +514,22 @@ export const api = {
      * จึงควรให้ผู้ใช้เลือกเอง ไม่ตั้งเป็นค่าเริ่มต้น
      */
     engine?: VisionEngineName;
+    /**
+     * ห้องสนทนาที่จะบันทึกผลสแกนนี้เป็น turn ลงไป
+     *
+     * เซิร์ฟเวอร์จะเขียนสอง turn คือภาพที่ส่งไปตรวจ และคำตอบที่ได้กลับมา
+     * รูปแบบเดียวกับที่เส้นทางแชทเขียน หน้าแชทจึงแสดงการ์ดผลตรวจได้ทันที
+     * ละไว้เพื่อให้เซิร์ฟเวอร์เปิดห้องใหม่ แล้วอ่าน id ที่ได้จาก `conversationId`
+     * ในคำตอบ
+     *
+     * ไม่บันทึกให้ผู้ที่ยังไม่ได้เข้าสู่ระบบ เพราะผู้เยี่ยมชมทุกคนใช้ตัวตน
+     * เดียวกันฝั่งเซิร์ฟเวอร์ ห้องที่เก็บไว้จะกลายเป็นของทุกคนร่วมกัน
+     * กรณีนั้นคำตอบจะมี `historyPersisted: false` พร้อมเหตุผลใน `historyNote`
+     * และประวัติถูกเก็บไว้ในเครื่องผู้ใช้เองตามบัญชีที่ใช้งานอยู่
+     */
+    conversationId?: string;
   }) =>
-    request<DiseaseDetection>('/watermelon/disease-detect', {
+    request<DiseaseDetection & ScanFiling>('/watermelon/disease-detect', {
       method: 'POST',
       body,
       // claude ที่ effort สูงใช้เวลาคิดนานกว่าโมเดลจำแนกมาก

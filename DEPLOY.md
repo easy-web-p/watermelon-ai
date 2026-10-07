@@ -132,9 +132,17 @@ gcloud run deploy watermelon-api \
   --memory 1Gi \
   --timeout 300 \
   --min-instances 0 \
-  --set-env-vars NODE_ENV=production,TRUST_PROXY=true,VISION_SERVICE_URL=$VISION_URL,VISION_CLAUDE_TIMEOUT_MS=180000 \
+  --set-env-vars NODE_ENV=production,TRUST_PROXY=true,VISION_SERVICE_URL=$VISION_URL,VISION_CLAUDE_TIMEOUT_MS=180000,HISTORY_FIRESTORE=1,FIRESTORE_PROJECT_ID=acoustic-fruit-ripeness \
   --set-secrets JWT_SECRET=JWT_SECRET:latest,STORAGE_SECRET=STORAGE_SECRET:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest
 ```
+
+`HISTORY_FIRESTORE=1` **ต้องตั้งบน Cloud Run** ถ้าไม่ตั้ง ประวัติการสนทนาจะเก็บลงไฟล์
+ในคอนเทนเนอร์ ซึ่งหายทุกครั้งที่ instance ถูกรีไซเคิลและไม่แชร์ระหว่าง instance
+ดูวิธีเตรียม Firestore ที่หัวข้อถัดไป
+
+ไม่ได้ตั้ง `CHAT_ENABLE_GEMINI` ไว้โดยเจตนา โมเดลแชทที่เสียเงินจึงปิดอยู่ แชทตอบด้วย
+ระบบกฎในเครื่องซึ่งไม่มีค่าใช้จ่าย เปิดได้ด้วยการเพิ่ม `CHAT_ENABLE_GEMINI=1`
+การใส่ `GEMINI_API_KEY` ไว้เฉย ๆ ไม่ทำให้เกิดค่าใช้จ่าย
 
 `TRUST_PROXY=true` จำเป็นบน Cloud Run เพราะ rate limit ของ OTP และหน้าเข้าสู่ระบบ
 อ่าน IP ผู้ใช้จาก `X-Forwarded-For` ถ้าไม่ตั้ง ทุกคำขอจะดูเหมือนมาจาก IP เดียวกัน
@@ -155,9 +163,35 @@ gcloud run services add-iam-policy-binding watermelon-vision \
 > ก่อนเรียก หรือ deploy เซอร์วิสวิเคราะห์ภาพด้วย `--allow-unauthenticated`
 > แล้วจำกัดด้วย VPC/Ingress แทน — ดูหัวข้อ "สิ่งที่ยังค้าง" ท้ายไฟล์
 
+### เตรียม Firestore สำหรับประวัติการสนทนา
+
+ทำครั้งเดียวต่อโปรเจกต์
+
+```bash
+gcloud services enable firestore.googleapis.com
+# ถ้ายังไม่มีฐานข้อมูล สร้างแบบ Native mode
+gcloud firestore databases create --location asia-southeast1
+
+PROJECT_NUMBER=$(gcloud projects describe acoustic-fruit-ripeness --format 'value(projectNumber)')
+gcloud projects add-iam-policy-binding acoustic-fruit-ripeness --member "serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" --role roles/datastore.user
+```
+
+ไม่ต้องเขียน security rules เพราะเบราว์เซอร์ไม่ได้ต่อ Firestore ตรง ๆ ทุกคำขอผ่าน
+`server.ts` ซึ่งตรวจสิทธิ์เจ้าของจาก JWT อยู่แล้ว (ดู `server-ownership.ts`)
+ถ้าวันหนึ่งให้ไคลเอนต์อ่านตรง ต้องเขียน rules ก่อน ไม่งั้นข้อมูลของทุกคนอ่านได้จากภายนอก
+
+ตรวจหลัง deploy ว่าใช้ Firestore จริง
+
+```bash
+curl -s https://acoustic-fruit-ripeness.web.app/api/v1/health
+# ต้องได้  "history": { "backend": "firestore", "reason": "" }
+# ถ้าได้ "file" ให้อ่าน reason ซึ่งบอกว่าขาดอะไร
+```
+
 ## 4. ต่อ Hosting เข้ากับ Cloud Run
 
-`firebase.json` **มี rewrite นี้อยู่แล้ว** ไม่ต้องเพิ่มเอง:
+`firebase.json` มี rewrite นี้แล้ว (เพิ่มเมื่อ 2026-10-07 — เอกสารรุ่นก่อนอ้างว่ามีอยู่แล้ว
+ทั้งที่ไฟล์จริงมีแต่ `** → /index.html` ซึ่งเป็นสาเหตุที่ `/api/v1/...` บนเว็บจริงตอบเป็น HTML):
 
 ```json
     "rewrites": [
@@ -241,12 +275,17 @@ cd fastapi_service && python -m pytest test_engines_errors.py -q
    (`http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=<VISION_URL>`)
    แล้วใส่เป็น `Authorization: Bearer` ก่อนจะปิด `--allow-unauthenticated` ได้จริง
 
-2. **ฐานข้อมูลเป็นไฟล์ JSON** — `data/watermelon_db.json` อยู่ในระบบไฟล์ของ container
-   ซึ่ง Cloud Run ลบทิ้งทุกครั้งที่ instance ถูกรีไซเคิล และไม่แชร์ระหว่าง instance
-   ข้อมูลที่ผู้ใช้บันทึกจะหาย ต้องย้ายไป Firestore หรือ Data Connect (มี schema อยู่แล้วใน
-   `dataconnect/`) ก่อนเปิดให้ใช้งานจริง **นี่เป็นตัวติดที่ใหญ่ที่สุด**
+2. ~~**ฐานข้อมูลเป็นไฟล์ JSON**~~ — **แก้แล้วเฉพาะประวัติการสนทนา** (2026-10-07)
+   ห้องสนทนาและข้อความไปอยู่บน Firestore เมื่อตั้ง `HISTORY_FIRESTORE=1`
+   (ดู `server-history-store.ts`)
+
+   **ส่วนที่เหลือใน `watermelon_db.json` ยังไม่ได้ย้าย** — ผู้ใช้, ความยินยอม, แปลง,
+   รายงาน, ประวัติผลสแกน (`diseaseRecords`), audit log ยังอยู่ในไฟล์และยังหาย
+   เมื่อ instance ถูกรีไซเคิล ย้ายได้ด้วยรูปแบบเดียวกับที่ทำไว้แล้ว
 
 3. **`uploads/` ก็เป็นระบบไฟล์เช่นกัน** — ภาพที่ผู้ใช้อัปโหลดจะหายไปพร้อม instance
    ต้องย้ายไป Cloud Storage
 
-ข้อ 2 และ 3 ทำให้สถาปัตยกรรมนี้เหมาะกับการทดสอบบนโดเมนจริง แต่ยังไม่พร้อมรับผู้ใช้จริง
+ข้อ 2 (ส่วนที่เหลือ) และข้อ 3 ยังทำให้สถาปัตยกรรมนี้เหมาะกับการทดสอบบนโดเมนจริง
+มากกว่ารับผู้ใช้จริง อาการที่ผู้ใช้จะเห็นก่อนคือรูปที่แนบในแชทหายหลัง instance
+ถูกรีไซเคิล เพราะ `uploads/` ยังเป็นระบบไฟล์ (ข้อ 3) ขณะที่ตัวข้อความยังอยู่ครบ
