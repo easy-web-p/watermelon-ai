@@ -36,6 +36,8 @@ export const RECENT_CHATS: readonly ChatHistoryItem[] = [
 
 /** Links in the marketing header and footer. */
 export const MARKETING_NAV: readonly { path: string; label: string }[] = [
+  { path: '/', label: 'หน้าแรก' },
+  { path: '/chat', label: 'แชท' },
   { path: '/evaluation', label: 'การวัดผล AI' },
   { path: '/diseases', label: 'โรคแตงโมที่รองรับ' },
   { path: '/about', label: 'ข้อมูลเกี่ยวกับเรา' },
