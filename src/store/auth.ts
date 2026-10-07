@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { api, setAuthHeaders, ApiError, NetworkError, type ApiUser } from '../lib/api';
 import { isValidThaiMobile, normalizePhone } from '../lib/calc';
+import { setHistoryScope } from '../lib/chatHistory';
 
 /**
  * Session state. The token and user survive reloads via localStorage; the
@@ -65,6 +66,13 @@ type AuthState = {
  * the JWT alone; sending them as well would only suggest they still matter.
  */
 function applyHeaders(user: ApiUser | null, token: string | null) {
+  // Local chat history is stored per account. Pointing it at the new session
+  // here covers every way the session can change — the four sign-in paths,
+  // sign-out, and rehydrate on load — because they all come through this
+  // function. Doing it in each caller instead is how one of them gets missed,
+  // and a missed call means the next person on the device reads these threads.
+  setHistoryScope(user && token ? user.id : null);
+
   if (!token || !user) {
     setAuthHeaders({});
     return;

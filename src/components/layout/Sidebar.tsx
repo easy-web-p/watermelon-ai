@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Logo } from '../brand/Logo';
 import { Icon } from '../ui/Icon';
 import { Link, useRouter } from '../../lib/router';
@@ -7,6 +7,7 @@ import { PRIMARY_NAV, RECENT_CHATS, SECONDARY_NAV, type NavItem } from '../../da
 import { useDisplayUser, useAuth } from '../../store/auth';
 import { useChat } from '../../store/chat';
 import { useToast } from '../ui/Toast';
+import { verifyConversationOwnership } from '../../lib/chatHistory';
 
 const ICON_TONE = {
   primary: 'text-primary',
@@ -44,8 +45,10 @@ function SectionLabel({ children, action }: { children: string; action?: React.R
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { path, query, navigate } = useRouter();
   const user = useDisplayUser();
+  const authUser = useAuth((state) => state.user);
   const signOut = useAuth((state) => state.signOut);
   const toast = useToast();
+  const [filterMineOnly, setFilterMineOnly] = useState(false);
 
   const conversations = useChat((state) => state.conversations);
   // Without this, a failed load left `conversations` empty and the list
@@ -56,6 +59,29 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const loadConversations = useChat((state) => state.loadConversations);
   const startNewChat = useChat((state) => state.startNewChat);
   const deleteChat = useChat((state) => state.deleteChat);
+
+  const ownershipList = (conversations ?? []).map((chat) => ({
+    chat,
+    ownership: verifyConversationOwnership(chat, authUser),
+  }));
+
+  const otherChatsCount = ownershipList.filter((item) => !item.ownership.isOwner).length;
+  const displayedChats = filterMineOnly
+    ? ownershipList.filter((item) => item.ownership.isOwner).map((item) => item.chat)
+    : conversations;
+
+  function handleClearOtherChats() {
+    const toDelete = ownershipList.filter((item) => !item.ownership.isOwner).map((item) => item.chat);
+    if (!toDelete.length) return;
+    const confirmed = window.confirm(
+      `ยืนยันการล้างประวัติการสนทนาที่ไม่ใช่ของบัญชีนี้จำนวน ${toDelete.length} รายการออกจากเครื่อง?`,
+    );
+    if (!confirmed) return;
+    for (const c of toDelete) {
+      void deleteChat(c.id);
+    }
+    toast.success(`ล้างประวัติอื่นเรียบร้อยแล้ว (${toDelete.length} รายการ)`);
+  }
 
   useEffect(() => {
     void loadConversations();
@@ -129,14 +155,40 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <nav className="flex flex-col gap-2 px-1" aria-label="ประวัติการสนทนาล่าสุด">
           <SectionLabel
             action={
-              <button
-                type="button"
-                onClick={() => void loadConversations()}
-                title="รีเฟรชประวัติ"
-                className="cursor-pointer text-on-surface-variant hover:text-primary transition-colors"
-              >
-                <Icon name="refresh" size={14} />
-              </button>
+              <div className="flex items-center gap-1.5">
+                {otherChatsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearOtherChats}
+                    title={`ตรวจพบ ${otherChatsCount} แชทที่ไม่ใช่ของบัญชีคุณ — กดเพื่อลบออกจากเครื่องนี้`}
+                    className="flex cursor-pointer items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-500/20 transition-colors"
+                  >
+                    <Icon name="cleaning_services" size={12} />
+                    <span>ล้างแชทอื่น ({otherChatsCount})</span>
+                  </button>
+                )}
+                {authUser && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterMineOnly((prev) => !prev)}
+                    title={filterMineOnly ? 'กำลังแสดงเฉพาะแชทของคุณ (กดเพื่อแสดงทั้งหมด)' : 'กำลังแสดงทั้งหมด (กดเพื่อกรองเฉพาะของคุณ)'}
+                    className={cn(
+                      'cursor-pointer rounded p-0.5 transition-colors',
+                      filterMineOnly ? 'text-primary font-bold' : 'text-on-surface-variant hover:text-primary',
+                    )}
+                  >
+                    <Icon name={filterMineOnly ? 'filter_alt' : 'filter_alt_off'} size={14} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void loadConversations()}
+                  title="รีเฟรชประวัติ"
+                  className="cursor-pointer text-on-surface-variant hover:text-primary transition-colors"
+                >
+                  <Icon name="refresh" size={14} />
+                </button>
+              </div>
             }
           >
             ประวัติการสนทนาล่าสุด
@@ -149,13 +201,19 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                 <Icon name="error" size={13} className="mr-1 inline align-text-bottom" />
                 โหลดประวัติไม่สำเร็จ — {listError} กดปุ่มรีเฟรชด้านบนเพื่อลองใหม่
               </p>
-            ) : !conversations || conversations.length === 0 ? (
+            ) : !displayedChats || displayedChats.length === 0 ? (
               <p className="px-3 py-2 text-caption text-outline">
-                {listLoading ? 'กำลังโหลดประวัติ...' : 'ยังไม่มีประวัติการสนทนา'}
+                {listLoading
+                  ? 'กำลังโหลดประวัติ...'
+                  : filterMineOnly
+                    ? 'ยังไม่มีประวัติที่เป็นของบัญชีนี้'
+                    : 'ยังไม่มีประวัติการสนทนา'}
               </p>
             ) : (
-              (conversations ?? []).slice(0, 10).map((chat) => {
+              displayedChats.slice(0, 10).map((chat) => {
                 const isActive = path === '/chat' && query.get('thread') === chat.id;
+                const ownership = verifyConversationOwnership(chat, authUser);
+
                 return (
                   <div key={chat.id} className="group relative flex items-center">
                     <Link
@@ -166,8 +224,28 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                         isActive && 'bg-primary-container/60 font-semibold text-on-primary-container',
                       )}
                     >
-                      <Icon name="chat_bubble" size={14} className={isActive ? 'text-primary' : 'text-outline'} />
+                      <span className="relative flex shrink-0 items-center justify-center">
+                        <Icon name="chat_bubble" size={14} className={isActive ? 'text-primary' : 'text-outline'} />
+                        {ownership.isOwner ? (
+                          <span
+                            className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-secondary"
+                            title={`ยืนยันแล้ว: ${ownership.ownerLabel}`}
+                          />
+                        ) : (
+                          <span
+                            className="absolute -top-1 -right-1 text-amber-500 font-bold text-[9px]"
+                            title={`⚠️ แชทนี้ไม่ใช่ของบัญชีคุณ (${ownership.ownerLabel})`}
+                          >
+                            !
+                          </span>
+                        )}
+                      </span>
                       <span className="truncate text-body-md">{chat.title || 'วิเคราะห์แตงโม 🍉'}</span>
+                      {!ownership.isOwner && (
+                        <span className="ml-auto shrink-0 rounded bg-amber-500/15 px-1 py-0.2 text-[10px] font-semibold text-amber-700">
+                          {ownership.isGuest ? 'Guest' : 'บัญชีอื่น'}
+                        </span>
+                      )}
                     </Link>
                     <button
                       type="button"

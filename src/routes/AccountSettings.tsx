@@ -6,17 +6,22 @@ import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
 import { Field, TextInput } from '../components/ui/Field';
 import { useToast } from '../components/ui/Toast';
+import { Meter } from '../components/ui/Meter';
 import { Link, useRouter } from '../lib/router';
 import { cn } from '../lib/cn';
 import { api } from '../lib/api';
+import { scorePassword, passwordStrengthLabel } from '../lib/calc';
 import { useAuth, useDisplayUser } from '../store/auth';
 
-type Tab = 'profile' | 'farm' | 'privacy';
+type Tab = 'profile' | 'farm' | 'privacy' | 'security' | 'line' | 'billing';
 
 const TABS: readonly { id: Tab; label: string; icon: string }[] = [
   { id: 'profile', label: 'ข้อมูลส่วนตัว', icon: 'person' },
   { id: 'farm', label: 'ข้อมูลแปลงและการเกษตร', icon: 'agriculture' },
   { id: 'privacy', label: 'ความเป็นส่วนตัว (PDPA)', icon: 'policy' },
+  { id: 'security', label: 'ความปลอดภัยและรหัสผ่าน', icon: 'lock' },
+  { id: 'line', label: 'การแจ้งเตือน LINE', icon: 'notifications' },
+  { id: 'billing', label: 'การสมัครสมาชิก', icon: 'receipt_long' },
 ];
 
 /** Pill-shaped switch used for all the preference rows on this screen. */
@@ -81,13 +86,29 @@ function PreferenceRow({
 }
 
 export function AccountSettings() {
-  const [tab, setTab] = useState<Tab>('profile');
+  const { navigate, query } = useRouter();
+  const queryTab = query.get('tab') as Tab | null;
+  const [tab, setTab] = useState<Tab>(
+    queryTab && TABS.some((t) => t.id === queryTab) ? queryTab : 'profile',
+  );
   const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const avatarInput = useRef<HTMLInputElement>(null);
   const certInput = useRef<HTMLInputElement>(null);
   const toast = useToast();
-  const { navigate } = useRouter();
+
+  // Security state
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [twoFactor, setTwoFactor] = useState(true);
+  const [changingPass, setChangingPass] = useState(false);
+
+  // LINE alert state
+  const [lineConnected, setLineConnected] = useState(true);
+  const [lineWeather, setLineWeather] = useState(true);
+  const [lineDisease, setLineDisease] = useState(true);
+  const [lineMarket, setLineMarket] = useState(false);
 
   const prefs = useAuth((state) => state.consent);
   const setConsent = useAuth((state) => state.setConsent);
@@ -139,6 +160,26 @@ export function AccountSettings() {
     navigate('/');
   }
 
+  function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      toast.error('รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 8 ตัวอักษร');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('รหัสผ่านยืนยันไม่ตรงกัน');
+      return;
+    }
+    setChangingPass(true);
+    setTimeout(() => {
+      setChangingPass(false);
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      toast.success('เปลี่ยนรหัสผ่านเรียบร้อยแล้ว');
+    }, 700);
+  }
+
   return (
     <AppShell>
       <PageContainer>
@@ -149,65 +190,53 @@ export function AccountSettings() {
               PRO เกษตรกรดิจิทัล
             </Badge>
           }
-          title="ตั้งค่าบัญชี"
-          description="จัดการข้อมูลส่วนตัว ข้อมูลแปลงเพาะปลูก และสิทธิ์ความเป็นส่วนตัวของข้อมูลคุณ"
+          title="ตั้งค่าบัญชี &amp; ระบบ"
+          description="จัดการข้อมูลส่วนตัว ข้อมูลแปลงเพาะปลูก ความปลอดภัย และการแจ้งเตือนของคุณ"
         />
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <nav className="lg:col-span-3" aria-label="หมวดการตั้งค่า">
-            <div className="flex gap-2 overflow-x-auto no-scrollbar lg:flex-col">
-              {TABS.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setTab(item.id)}
-                  aria-current={tab === item.id ? 'page' : undefined}
-                  className={cn(
-                    'flex shrink-0 cursor-pointer items-center gap-2.5 rounded-md px-4 py-3 text-left text-label-lg transition-all duration-150 ease-tactile lg:w-full',
-                    tab === item.id
-                      ? 'bg-primary-container font-semibold text-on-primary-container shadow-sm'
-                      : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface',
-                  )}
-                >
-                  <Icon name={item.icon} size={20} />
-                  {item.label}
-                </button>
-              ))}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* Settings Sidebar Card matching image design 100% */}
+          <nav className="lg:col-span-4 xl:col-span-3.5" aria-label="หมวดการตั้งค่า">
+            <div className="rounded-3xl bg-surface-lowest p-3 border border-outline-variant/20 shadow-sm flex flex-col gap-1.5">
+              {TABS.map((item) => {
+                const isActive = tab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setTab(item.id)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={cn(
+                      'flex items-center gap-3.5 rounded-2xl px-4 py-3.5 text-left text-body-lg font-semibold transition-all duration-150 cursor-pointer',
+                      isActive
+                        ? 'bg-primary text-on-primary shadow-md'
+                        : 'text-on-surface hover:bg-surface-container',
+                    )}
+                  >
+                    <Icon
+                      name={item.icon}
+                      size={22}
+                      className={isActive ? 'text-on-primary' : 'text-on-surface'}
+                    />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
 
-              <Link
-                to="/security"
-                className="flex shrink-0 items-center gap-2.5 rounded-md px-4 py-3 text-label-lg text-on-surface-variant transition-all hover:bg-surface-container hover:text-on-surface lg:w-full"
-              >
-                <Icon name="lock" size={20} />
-                ความปลอดภัยและรหัสผ่าน
-              </Link>
-              <Link
-                to="/alerts"
-                className="flex shrink-0 items-center gap-2.5 rounded-md px-4 py-3 text-label-lg text-on-surface-variant transition-all hover:bg-surface-container hover:text-on-surface lg:w-full"
-              >
-                <Icon name="notifications" size={20} />
-                การแจ้งเตือน LINE
-              </Link>
-              <Link
-                to="/billing"
-                className="flex shrink-0 items-center gap-2.5 rounded-md px-4 py-3 text-label-lg text-on-surface-variant transition-all hover:bg-surface-container hover:text-on-surface lg:w-full"
-              >
-                <Icon name="receipt_long" size={20} />
-                การสมัครสมาชิก
-              </Link>
+              <div className="my-1.5 border-t border-outline-variant/20" />
 
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="mt-2 flex shrink-0 cursor-pointer items-center gap-2.5 rounded-md border-t border-outline-variant/30 px-4 pt-4 pb-3 text-left text-label-lg font-semibold text-error transition-all hover:bg-error-container/30 lg:w-full"
+                className="flex items-center gap-3.5 rounded-2xl px-4 py-3.5 text-left text-body-lg font-semibold text-error hover:bg-error-container/20 transition-all duration-150 cursor-pointer"
               >
-                <Icon name="logout" size={20} className="text-error" />
-                ออกจากระบบ
+                <Icon name="logout" size={22} className="text-error" />
+                <span>ออกจากระบบ</span>
               </button>
             </div>
           </nav>
 
-          <div className="flex flex-col gap-4 lg:col-span-9">
+          <div className="flex flex-col gap-4 lg:col-span-8 xl:col-span-8.5">
             {tab === 'profile' ? (
               <>
                 <Card>
@@ -556,6 +585,265 @@ export function AccountSettings() {
                         ลบบัญชี
                       </button>
                     </div>
+                  </div>
+                </Card>
+              </>
+            ) : null}
+
+            {tab === 'security' ? (
+              <>
+                <Card>
+                  <CardHeader
+                    icon="lock_reset"
+                    title="เปลี่ยนรหัสผ่าน"
+                    subtitle="แนะนำให้เปลี่ยนรหัสผ่านทุก 6 เดือนเพื่อความปลอดภัยสูงสุด"
+                  />
+                  <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
+                    <Field label="รหัสผ่านปัจจุบัน" required>
+                      <TextInput
+                        type="password"
+                        placeholder="••••••••"
+                        value={oldPassword}
+                        onChange={(e) => setOldPassword(e.target.value)}
+                        required
+                      />
+                    </Field>
+                    <Field label="รหัสผ่านใหม่" required hint="ความยาวอย่างน้อย 8 ตัวอักษร">
+                      <TextInput
+                        type="password"
+                        placeholder="อย่างน้อย 8 ตัวอักษร"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        required
+                      />
+                    </Field>
+                    {newPassword && (
+                      <div className="flex flex-col gap-1.5 rounded-lg bg-surface-low p-3">
+                        <div className="flex items-center justify-between text-caption">
+                          <span className="text-on-surface-variant">ความปลอดภัยของรหัสผ่าน:</span>
+                          <span className="font-semibold text-on-surface">
+                            {passwordStrengthLabel(scorePassword(newPassword))}
+                          </span>
+                        </div>
+                        <Meter
+                          value={scorePassword(newPassword)}
+                          max={4}
+                          tone={
+                            scorePassword(newPassword) < 2
+                              ? 'error'
+                              : scorePassword(newPassword) < 3
+                                ? 'primary'
+                                : 'secondary'
+                          }
+                        />
+                      </div>
+                    )}
+                    <Field label="ยืนยันรหัสผ่านใหม่" required>
+                      <TextInput
+                        type="password"
+                        placeholder="พิมพ์รหัสผ่านใหม่อีกครั้ง"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                      />
+                    </Field>
+                    <div className="mt-2 flex justify-end">
+                      <Button type="submit" disabled={changingPass}>
+                        <Icon name={changingPass ? 'progress_activity' : 'save'} size={18} className={changingPass ? 'animate-spin' : undefined} />
+                        {changingPass ? 'กำลังบันทึก...' : 'บันทึกรหัสผ่านใหม่'}
+                      </Button>
+                    </div>
+                  </form>
+                </Card>
+
+                <Card>
+                  <CardHeader
+                    icon="phonelink_lock"
+                    iconTone="secondary"
+                    title="การยืนยันตัวตนสองชั้น (2FA)"
+                    subtitle="เพิ่มความปลอดภัยอีกขั้นด้วยการรับรหัส OTP ทาง SMS ทุกครั้งที่เข้าสู่ระบบ"
+                  />
+                  <div className="flex items-center justify-between gap-4 rounded-md bg-surface-low p-4">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-lowest text-secondary">
+                        <Icon name="sms" size={18} />
+                      </span>
+                      <div>
+                        <p className="text-label-lg font-semibold text-on-surface">ยืนยันผ่านเบอร์โทรศัพท์ (SMS OTP)</p>
+                        <p className="text-caption text-on-surface-variant">
+                          ส่งรหัส 6 หลักไปยัง {user?.phone ? user.phone : '084-592-xxxx'}
+                        </p>
+                      </div>
+                    </div>
+                    <Toggle
+                      checked={twoFactor}
+                      onChange={(next) => {
+                        setTwoFactor(next);
+                        toast.success(next ? 'เปิดใช้งาน 2FA แล้ว' : 'ปิดใช้งาน 2FA แล้ว');
+                      }}
+                      label="ยืนยันตัวตนสองชั้น"
+                    />
+                  </div>
+                </Card>
+
+                <Card>
+                  <CardHeader
+                    icon="devices"
+                    title="อุปกรณ์ที่เข้าสู่ระบบอยู่ในขณะนี้"
+                    subtitle="เซสชันที่กำลังใช้งานบัญชีของคุณ"
+                  />
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-3 rounded-md bg-surface-low p-3.5">
+                      <div className="flex items-center gap-3">
+                        <Icon name="computer" size={24} className="text-primary" />
+                        <div>
+                          <p className="text-label-md font-semibold text-on-surface">Chrome บน Windows (เครื่องปัจจุบัน)</p>
+                          <p className="text-caption text-on-surface-variant">กำลังใช้งานอยู่ • ประเทศไทย</p>
+                        </div>
+                      </div>
+                      <Badge tone="secondary">เซสชันนี้</Badge>
+                    </div>
+                  </div>
+                </Card>
+              </>
+            ) : null}
+
+            {tab === 'line' ? (
+              <>
+                <Card>
+                  <CardHeader
+                    icon="notifications"
+                    title="การแจ้งเตือนผ่าน LINE"
+                    subtitle="รับข้อมูลด่วน คำเตือนสภาพอากาศ และผลวิเคราะห์โรคผ่าน LINE Official Account"
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-secondary/30 bg-mint-mist p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#06C755] text-white">
+                        <Icon name="chat" size={22} />
+                      </div>
+                      <div>
+                        <p className="text-title-sm font-bold text-on-surface">LINE Official Account</p>
+                        <p className="text-caption text-on-surface-variant">
+                          {lineConnected ? 'เชื่อมต่อเรียบร้อยแล้ว (@watermelon-ai)' : 'ยังไม่ได้เชื่อมต่อ'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant={lineConnected ? 'quiet' : 'primary'}
+                      size="sm"
+                      onClick={() => {
+                        if (lineConnected) {
+                          toast.info('ส่งข้อความทดสอบไปยัง LINE เรียบร้อยแล้ว');
+                        } else {
+                          setLineConnected(true);
+                          toast.success('เชื่อมต่อ LINE สำเร็จ');
+                        }
+                      }}
+                    >
+                      <Icon name={lineConnected ? 'send' : 'link'} size={16} />
+                      {lineConnected ? 'ส่งข้อความทดสอบ' : 'เชื่อมต่อ LINE'}
+                    </Button>
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-3">
+                    <PreferenceRow
+                      icon="cloud"
+                      title="แจ้งเตือนสภาพอากาศและฝนตกฉับพลัน"
+                      description="เตือนล่วงหน้า 3 ชั่วโมง เมื่อคาดว่าจะมีฝนตกหนักกระทบแปลงแตงโม"
+                      checked={lineWeather}
+                      onChange={(next) => {
+                        setLineWeather(next);
+                        toast.success(next ? 'เปิดเตือนสภาพอากาศแล้ว' : 'ปิดเตือนสภาพอากาศแล้ว');
+                      }}
+                    />
+                    <PreferenceRow
+                      icon="coronavirus"
+                      title="เตือนเฝ้าระวังโรคระบาดในพื้นที่"
+                      description="แจ้งเตือนเมื่อพบโรคราน้ำค้างหรือเพลี้ยไฟระบาดในรัศมี 15 กม."
+                      checked={lineDisease}
+                      onChange={(next) => {
+                        setLineDisease(next);
+                        toast.success(next ? 'เปิดเตือนโรคระบาดแล้ว' : 'ปิดเตือนโรคระบาดแล้ว');
+                      }}
+                    />
+                    <PreferenceRow
+                      icon="trending_up"
+                      title="สรุปราคาตลาดแตงโมประจำวัน (07:00 น.)"
+                      description="รายงานราคาแตงโม ตลาดไท ตลาดสี่มุมเมือง ทุกเช้า"
+                      checked={lineMarket}
+                      onChange={(next) => {
+                        setLineMarket(next);
+                        toast.success(next ? 'เปิดเตือนราคาตลาดแล้ว' : 'ปิดเตือนราคาตลาดแล้ว');
+                      }}
+                    />
+                  </div>
+                </Card>
+              </>
+            ) : null}
+
+            {tab === 'billing' ? (
+              <>
+                <Card>
+                  <CardHeader
+                    icon="receipt_long"
+                    title="การสมัครสมาชิก &amp; แพ็กเกจ"
+                    subtitle="สถานะแพ็กเกจและสิทธิประโยชน์การใช้งานของคุณ"
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/5 p-5 border border-primary/20">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Badge tone="primary">PRO เกษตรกรดิจิทัล</Badge>
+                        <span className="text-caption font-semibold text-secondary">ใช้งานได้ไม่จำกัด</span>
+                      </div>
+                      <p className="mt-2 text-title-md font-bold text-on-surface">แพ็กเกจรายปี (390 บาท / ปี)</p>
+                      <p className="text-caption text-on-surface-variant">ต่ออายุอัตโนมัติในวันที่ 15 กันยายน 2570</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => navigate('/pricing')}>
+                      ดูแพ็กเกจทั้งหมด
+                    </Button>
+                  </div>
+
+                  <div className="mt-5">
+                    <p className="text-label-lg font-bold text-on-surface mb-3">สิทธิประโยชน์ที่ได้รับ:</p>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-body-md text-on-surface-variant">
+                      <li className="flex items-center gap-2">
+                        <Icon name="check_circle" size={18} className="text-secondary" />
+                        <span>วิเคราะห์โรคใบด้วย AI ไม่จำกัดจำนวนครั้ง</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Icon name="check_circle" size={18} className="text-secondary" />
+                        <span>ตรวจเสียงเคาะวัดความสุกแตงโมตลอด 24 ชม.</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Icon name="check_circle" size={18} className="text-secondary" />
+                        <span>แจ้งเตือนสภาพอากาศและโรคผ่าน LINE</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Icon name="check_circle" size={18} className="text-secondary" />
+                        <span>บันทึกแปลงเพาะปลูกได้สูงสุด 20 แปลง</span>
+                      </li>
+                    </ul>
+                  </div>
+                </Card>
+
+                <Card>
+                  <CardHeader
+                    icon="receipt"
+                    title="ประวัติการชำระเงิน"
+                    subtitle="ดาวน์โหลดใบเสร็จรับเงินสำหรับบัญชีฟาร์ม"
+                  />
+                  <div className="flex items-center justify-between rounded-md bg-surface-low p-4">
+                    <div className="flex items-center gap-3">
+                      <Icon name="description" size={22} className="text-on-surface-variant" />
+                      <div>
+                        <p className="text-label-md font-semibold text-on-surface">ใบเสร็จ #WM-2026-0915</p>
+                        <p className="text-caption text-on-surface-variant">15 ก.ย. 2569 • ฿390.00 (พร้อมเพย์)</p>
+                      </div>
+                    </div>
+                    <Button variant="quiet" size="sm" onClick={() => toast.info('ดาวน์โหลดใบเสร็จรับเงินเรียบร้อย')}>
+                      <Icon name="download" size={16} />
+                      ดาวน์โหลด PDF
+                    </Button>
                   </div>
                 </Card>
               </>

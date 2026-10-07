@@ -28,6 +28,8 @@ import {
   restoreConversationId,
   saveLocalMessages,
   toFeedMessage,
+  verifyConversationOwnership,
+  type ConversationOwnership,
 } from '../lib/chatHistory';
 import { compressImage, useKnockRecorder, validateImage } from '../lib/media';
 import { useAuth, useDisplayUser } from '../store/auth';
@@ -95,7 +97,13 @@ function RichText({ text }: { text: string }) {
   );
 }
 
-function AssistantBar({ onTool }: { onTool: (tool: 'photo' | 'disease' | 'chemicals') => void }) {
+function AssistantBar({
+  onTool,
+  ownership,
+}: {
+  onTool: (tool: 'photo' | 'disease' | 'chemicals') => void;
+  ownership?: ConversationOwnership | null;
+}) {
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/30 bg-surface-lowest/80 px-4 py-3 backdrop-blur-md sm:px-6">
@@ -105,9 +113,23 @@ function AssistantBar({ onTool }: { onTool: (tool: 'photo' | 'disease' | 'chemic
           <span className="absolute right-0 bottom-0 size-3 animate-pulse rounded-full bg-secondary ring-2 ring-surface-lowest" />
         </span>
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-title-md leading-tight font-bold text-on-surface">น้องแตงโม AI</span>
             <Badge tone="primary">v2.4 Pro</Badge>
+            {ownership && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors',
+                  ownership.isOwner
+                    ? 'bg-secondary-container/70 text-on-secondary-fixed-variant'
+                    : 'bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold',
+                )}
+                title={`สถานะความเป็นเจ้าของ: ${ownership.ownerLabel}`}
+              >
+                <Icon name={ownership.isOwner ? 'verified' : 'warning'} size={13} />
+                <span>{ownership.isOwner ? 'ประวัติของคุณ' : 'เซสชันอื่น'}</span>
+              </span>
+            )}
           </div>
           <p className="flex items-center gap-1.5 text-caption text-secondary">
             <span className="size-1.5 rounded-full bg-secondary" />
@@ -282,7 +304,11 @@ export function ChatAssistant() {
   const { initial } = useDisplayUser();
   const user = useAuth((state) => state.user);
   const allowTraining = useAuth((state) => state.consent.improveModel);
+  const conversations = useChat((state) => state.conversations);
   const [acousticOnline, setAcousticOnline] = useState<boolean | null>(null);
+
+  const activeConv = conversations.find((c) => c.id === conversationId.current);
+  const ownership = verifyConversationOwnership(activeConv, user);
 
   useEffect(() => {
     api.acousticModelStatus().then((st) => setAcousticOnline(st.online)).catch(() => setAcousticOnline(false));
@@ -386,6 +412,7 @@ export function ChatAssistant() {
 
       useChat.getState().upsertConversation({
         id: convId,
+        userId: existing?.userId || user?.id || 'guest-anonymous',
         title: title + (title.length >= 30 ? '...' : ''),
         lastMessage:
           message.text?.slice(0, 40) ||
@@ -664,6 +691,7 @@ export function ChatAssistant() {
     <AppShell>
       <div className="flex min-h-[calc(100vh-4rem)] flex-col">
         <AssistantBar
+          ownership={ownership}
           onTool={(tool) => {
             if (tool === 'chemicals') {
               navigate('/fertilizer');
@@ -677,6 +705,33 @@ export function ChatAssistant() {
             fileInput.current?.click();
           }}
         />
+
+        {activeConv && !ownership.isOwner && (
+          <div className="mx-4 mt-3 mb-1 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-amber-900 shadow-sm dark:text-amber-200 sm:mx-6">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Icon name="warning" size={22} className="shrink-0 text-amber-600" />
+              <div className="min-w-0">
+                <p className="text-label-md font-bold">
+                  ⚠️ ตรวจสอบประวัติ: แชทนี้สร้างโดย {ownership.ownerLabel} (ไม่ใช่ของบัญชีนี้)
+                </p>
+                <p className="text-caption text-amber-800/80 dark:text-amber-300/80">
+                  เพื่อความถูกต้องและความเป็นส่วนตัว คุณสามารถเริ่มแชทใหม่สำหรับบัญชีนี้ได้ทันที
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const newThread = useChat.getState().startNewChat();
+                navigate(`/chat?thread=${newThread}`);
+              }}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-label-md font-semibold text-white shadow-cta hover:bg-primary-container active:scale-95"
+            >
+              <Icon name="add" size={16} />
+              เริ่มแชทใหม่ของคุณ
+            </button>
+          </div>
+        )}
 
         <div className="overflow-x-auto bg-surface-low px-4 py-2.5 no-scrollbar sm:px-6">
           <div className="flex min-w-max items-center gap-2">

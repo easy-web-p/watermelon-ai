@@ -3,11 +3,13 @@ import { api, ApiError, NetworkError, type ApiConversation } from '../lib/api';
 import {
   deleteLocalConversation,
   getLocalConversations,
+  historyScope,
   rememberConversationId,
   restoreConversationId,
   saveLocalConversation,
   saveLocalConversations,
 } from '../lib/chatHistory';
+import { useAuth } from './auth';
 
 /**
  * `conv-${Date.now()}` collided whenever two threads were started inside the
@@ -29,6 +31,8 @@ export interface ChatStore {
   startNewChat: () => string;
   deleteChat: (id: string) => Promise<void>;
   upsertConversation: (conv: ApiConversation) => void;
+  /** Re-read everything for whoever is signed in now. */
+  adoptCurrentAccount: () => void;
 }
 
 export const useChat = create<ChatStore>((set, get) => ({
@@ -114,6 +118,17 @@ export const useChat = create<ChatStore>((set, get) => ({
     set({ conversations: remaining, activeId: nextActive, error: null });
   },
 
+  adoptCurrentAccount() {
+    // Signing in or out must not leave the previous account's threads on
+    // screen. The list and the open thread both come from storage that is now
+    // scoped to someone else, so both are re-read rather than merged: merging
+    // is what used to carry a visitor's conversation into the account that
+    // signed in next.
+    const list = getLocalConversations();
+    set({ conversations: list, activeId: restoreConversationId(newConversationId), error: null });
+    void get().loadConversations();
+  },
+
   upsertConversation(conv: ApiConversation) {
     saveLocalConversation(conv);
     set((state) => {
@@ -129,3 +144,24 @@ export const useChat = create<ChatStore>((set, get) => ({
     });
   },
 }));
+
+/**
+ * Follow the session.
+ *
+ * `applyHeaders` in the auth store repoints local history at the new account,
+ * but a screen already mounted keeps rendering whatever this store holds. The
+ * subscription makes the switch visible immediately instead of on the next
+ * reload, which is when someone would otherwise notice that the threads on
+ * screen are not theirs.
+ *
+ * Compared by scope rather than by user object: zustand hands us a new object
+ * on every unrelated change (an OTP step, a consent toggle), and reloading the
+ * whole thread list on each of those is wasted work.
+ */
+let lastScope = historyScope();
+useAuth.subscribe(() => {
+  const scope = historyScope();
+  if (scope === lastScope) return;
+  lastScope = scope;
+  useChat.getState().adoptCurrentAccount();
+});

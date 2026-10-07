@@ -16,6 +16,7 @@ export const PRIMARY_NAV: readonly NavItem[] = [
   { path: '/market', label: 'เช็กราคาตลาดแตงโมวันนี้', icon: 'trending_up', tone: 'secondary' },
   { path: '/fertilizer', label: 'ปุ๋ย & สารอารักขาพืช', icon: 'science', tone: 'tertiary' },
   { path: '/recipes', label: 'สูตรเครื่องดื่ม & ขนมแตงโม', icon: 'local_bar', tone: 'primary' },
+  { path: '/settings', label: 'การตั้งค่าระบบ & บัญชี', icon: 'settings', tone: 'secondary' },
 ] as const;
 
 export const SECONDARY_NAV: readonly NavItem[] = [
@@ -38,6 +39,7 @@ export const RECENT_CHATS: readonly ChatHistoryItem[] = [
 export const MARKETING_NAV: readonly { path: string; label: string }[] = [
   { path: '/', label: 'หน้าแรก' },
   { path: '/chat', label: 'แชท' },
+  { path: '/settings', label: 'ตั้งค่า' },
   { path: '/evaluation', label: 'การวัดผล AI' },
   { path: '/diseases', label: 'โรคแตงโมที่รองรับ' },
   { path: '/about', label: 'ข้อมูลเกี่ยวกับเรา' },

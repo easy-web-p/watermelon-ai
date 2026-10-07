@@ -1,17 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CONVERSATION_STORAGE_KEY,
+  GUEST_SCOPE,
   deleteLocalConversation,
   getLocalConversations,
   getLocalDiseaseHistory,
   getLocalMessages,
+  historyScope,
   rememberConversationId,
+  resetHistoryScope,
+  setHistoryScope,
   restoreConversationId,
   saveLocalConversation,
   saveLocalDiseaseRecord,
   saveLocalMessages,
   timeLabel,
   toFeedMessage,
+  verifyConversationOwnership,
 } from './chatHistory';
 import type { ApiMessage } from './api';
 
@@ -183,3 +188,181 @@ describe('local-first persistence', () => {
   });
 });
 
+describe('verifyConversationOwnership', () => {
+  it('identifies ownership for signed in user matching conversation userId', () => {
+    const conv = { id: 'conv-1', userId: 'user-123' };
+    const user = { id: 'user-123', name: 'สมชาย เกษตรกร' };
+    const result = verifyConversationOwnership(conv, user);
+
+    expect(result.isOwner).toBe(true);
+    expect(result.isGuest).toBe(false);
+    expect(result.ownerId).toBe('user-123');
+    expect(result.ownerLabel).toContain('สมชาย');
+  });
+
+  it('flags guest conversations as not owned when user is signed in', () => {
+    const conv = { id: 'conv-guest', userId: 'guest-anonymous' };
+    const user = { id: 'user-123', name: 'สมชาย' };
+    const result = verifyConversationOwnership(conv, user);
+
+    expect(result.isOwner).toBe(false);
+    expect(result.isGuest).toBe(true);
+    expect(result.ownerLabel).toContain('Guest');
+  });
+
+  it('flags conversations from another signed-in user', () => {
+    const conv = { id: 'conv-other', userId: 'user-456' };
+    const user = { id: 'user-123', name: 'สมชาย' };
+    const result = verifyConversationOwnership(conv, user);
+
+    expect(result.isOwner).toBe(false);
+    expect(result.isGuest).toBe(false);
+    expect(result.ownerId).toBe('user-456');
+    expect(result.ownerLabel).toContain('บัญชีอื่น');
+  });
+
+  it('recognizes guest conversation as owned when current visitor is guest', () => {
+    const conv = { id: 'conv-guest', userId: 'guest-anonymous' };
+    const result = verifyConversationOwnership(conv, null);
+
+    expect(result.isOwner).toBe(true);
+    expect(result.isGuest).toBe(true);
+    expect(result.ownerLabel).toContain('Guest');
+  });
+
+  it('recognizes null conversation safely', () => {
+    const result = verifyConversationOwnership(null, { id: 'user-1', name: 'มานะ' });
+    expect(result.isOwner).toBe(true);
+    expect(result.ownerId).toBe('user-1');
+  });
+});
+
+/**
+ * Two accounts on one device.
+ *
+ * Every key used to be global, so the second person to sign in on a shared
+ * phone read and wrote the first person's threads, diagnoses and open
+ * conversation — and `signOut` left it all behind for whoever came next.
+ * The server has always enforced ownership; only the device mixed people up.
+ */
+describe('per-account scoping', () => {
+  afterEach(() => {
+    resetHistoryScope();
+  });
+
+  const conversation = (id: string) => ({
+    id,
+    title: id,
+    lastMessage: '',
+    messageCount: 1,
+    createdAt: '2026-10-07T00:00:00.000Z',
+    updatedAt: '2026-10-07T00:00:00.000Z',
+    isPinned: false,
+    chatMode: 'general',
+  });
+
+  it('keeps one account from reading another account conversations', () => {
+    setHistoryScope('user-a');
+    saveLocalConversation(conversation('conv-a'));
+
+    setHistoryScope('user-b');
+    expect(getLocalConversations()).toEqual([]);
+    saveLocalConversation(conversation('conv-b'));
+    expect(getLocalConversations().map((c) => c.id)).toEqual(['conv-b']);
+
+    setHistoryScope('user-a');
+    expect(getLocalConversations().map((c) => c.id)).toEqual(['conv-a']);
+  });
+
+  it('separates stored messages per account', () => {
+    setHistoryScope('user-a');
+    saveLocalMessages('shared-thread-id', [
+      { id: 'a-1', role: 'user', time: '10:00 น.', text: 'ของบัญชี A' },
+    ]);
+
+    setHistoryScope('user-b');
+    expect(getLocalMessages('shared-thread-id')).toEqual([]);
+  });
+
+  it('separates the disease scan history per account', () => {
+    const record = (id: string) => ({
+      id,
+      detectedAt: '2026-10-07T00:00:00.000Z',
+      farmId: 'farm-01',
+      notes: '',
+      status: 'diagnosed' as const,
+      disease_id: 'anthracnose',
+      thai_name: 'โรคแอนแทรคโนส',
+      confidence_percentage: 90,
+    });
+
+    setHistoryScope('user-a');
+    saveLocalDiseaseRecord(record('dis-a'));
+
+    setHistoryScope('user-b');
+    expect(getLocalDiseaseHistory()).toEqual([]);
+
+    setHistoryScope('user-a');
+    expect(getLocalDiseaseHistory().map((r) => r.id)).toEqual(['dis-a']);
+  });
+
+  it('does not carry the open thread across a sign-out', () => {
+    setHistoryScope('user-a');
+    rememberConversationId('conv-of-a');
+
+    setHistoryScope(null);
+    expect(restoreConversationId(() => 'fresh-for-visitor')).toBe('fresh-for-visitor');
+
+    setHistoryScope('user-a');
+    expect(restoreConversationId(() => 'unused')).toBe('conv-of-a');
+  });
+
+  it('leaves a visitor on the unsuffixed keys so existing installs keep their history', () => {
+    // Data written before accounts were scoped lives under the bare key.
+    // Attributing it to whoever signs in next would be a guess; leaving it in
+    // the visitor bucket keeps it readable without claiming an owner.
+    window.localStorage.setItem(CONVERSATION_STORAGE_KEY, 'conv-from-old-build');
+    setHistoryScope(null);
+    expect(historyScope()).toBe(GUEST_SCOPE);
+    expect(restoreConversationId(() => 'unused')).toBe('conv-from-old-build');
+  });
+
+  it('reads the account out of the persisted session when nothing set the scope', () => {
+    // The chat store reads history while it is being constructed, before any
+    // screen can tell it who is signed in, so the scope has to be derivable
+    // from storage alone.
+    window.localStorage.setItem(
+      'watermelon-auth',
+      JSON.stringify({ state: { user: { id: 'user-c' }, token: 't' }, version: 0 }),
+    );
+    resetHistoryScope();
+    expect(historyScope()).toBe('u:user-c');
+  });
+
+  it('treats a malformed persisted session as a visitor rather than throwing', () => {
+    window.localStorage.setItem('watermelon-auth', 'not json');
+    resetHistoryScope();
+    expect(historyScope()).toBe(GUEST_SCOPE);
+  });
+
+  it('gives each account its own in-memory thread when storage is unavailable', () => {
+    // Private windows throw on every access. One shared variable meant a
+    // sign-in kept writing into the thread the visitor had been using.
+    const getItem = vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+
+    setHistoryScope('user-a');
+    const forA = restoreConversationId(() => `a-${Math.random()}`);
+    expect(restoreConversationId(() => 'should-not-be-used')).toBe(forA);
+
+    setHistoryScope('user-b');
+    const forB = restoreConversationId(() => 'b-thread');
+    expect(forB).not.toBe(forA);
+
+    getItem.mockRestore();
+  });
+});
