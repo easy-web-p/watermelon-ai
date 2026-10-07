@@ -304,26 +304,17 @@ export function ChatAssistant() {
   const [acousticOnline, setAcousticOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!user) {
-      toast.info('กรุณาเข้าสู่ระบบก่อนใช้งานแชทกับน้องแตงโม AI');
-      navigate('/signin?redirect=/chat', { replace: true });
-    }
-  }, [user, navigate, toast]);
-
-  useEffect(() => {
-    if (!user) return;
     api.acousticModelStatus().then((st) => setAcousticOnline(st.online)).catch(() => setAcousticOnline(false));
     api.visionEngines().then((res) => {
       if (res.engines?.length) setEngineList(res.engines);
     }).catch(() => undefined);
-  }, [user]);
+  }, []);
 
   const threadMatch = path.match(/^\/chat\/([^/?#]+)/);
   const thread = query.get('thread') || (threadMatch ? decodeURIComponent(threadMatch[1]) : null);
   const [restoring, setRestoring] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
     const currentThread = thread || restoreConversationId(() => newId('conv'));
     conversationId.current = currentThread;
     rememberConversationId(currentThread);
@@ -687,48 +678,6 @@ export function ChatAssistant() {
   }, [recorder.error, toast]);
 
   const recording = recorder.state === 'recording';
-
-  if (!user) {
-    return (
-      <AppShell>
-        <div className="flex min-h-[70vh] flex-col items-center justify-center p-6 text-center">
-          <div className="mb-4 flex size-20 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Icon name="lock" size={40} />
-          </div>
-          <h2 className="mb-2 text-headline-sm font-bold text-on-surface">
-            กรุณาเข้าสู่ระบบก่อนใช้งานแชท
-          </h2>
-          <p className="mb-6 max-w-md text-body-md text-on-surface-variant">
-            ฟีเจอร์แชทกับน้องแตงโม AI สงวนไว้สำหรับสมาชิกที่เข้าสู่ระบบ เพื่อบันทึกประวัติการพูดคุยและวิเคราะห์แปลงเพาะปลูกของคุณ
-          </p>
-          <div className="flex flex-wrap justify-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/signin?redirect=/chat')}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-label-lg font-semibold text-on-primary shadow-sm transition-transform active:scale-95"
-            >
-              <Icon name="login" size={18} />
-              เข้าสู่ระบบ / ลงทะเบียน
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (window.history.length > 1) {
-                  window.history.back();
-                } else {
-                  navigate('/');
-                }
-              }}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-outline-variant/50 bg-surface-lowest px-6 py-2.5 text-label-lg font-semibold text-on-surface transition-all hover:bg-surface-container active:scale-95"
-            >
-              <Icon name="arrow_back" size={18} />
-              กลับสู่หน้าแรก
-            </button>
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
 
   return (
     <AppShell>

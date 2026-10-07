@@ -10,25 +10,24 @@ describe('Authentication Route Guard', () => {
     useAuth.setState({ user: null, token: null, error: null, status: 'idle' });
   });
 
-  it('blocks unauthenticated access inside AppShell and displays login prompt', () => {
+  it('allows unauthenticated access inside AppShell as guest without login gate', () => {
     window.location.hash = '#/cultivation';
 
     render(
       <ToastProvider>
         <RouterProvider>
           <AppShell>
-            <div data-testid="protected-content">Secret Farm Data</div>
+            <div data-testid="protected-content">Farm Data</div>
           </AppShell>
         </RouterProvider>
       </ToastProvider>,
     );
 
     expect(
-      screen.getByRole('heading', { name: 'กรุณาเข้าสู่ระบบก่อนเข้าใช้งาน' }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('เข้าสู่ระบบ / ลงทะเบียน')).toBeInTheDocument();
-    expect(screen.getByText('กลับสู่หน้าแรก')).toBeInTheDocument();
-    expect(screen.queryByTestId('protected-content')).not.toBeInTheDocument();
+      screen.queryByRole('heading', { name: 'กรุณาเข้าสู่ระบบก่อนเข้าใช้งาน' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('protected-content')).toBeInTheDocument();
+    expect(screen.getByText('Farm Data')).toBeInTheDocument();
   });
 
   it('allows access inside AppShell when user is authenticated', async () => {
@@ -48,7 +47,7 @@ describe('Authentication Route Guard', () => {
       <ToastProvider>
         <RouterProvider>
           <AppShell>
-            <div data-testid="protected-content">Secret Farm Data</div>
+            <div data-testid="protected-content">Farm Data</div>
           </AppShell>
         </RouterProvider>
       </ToastProvider>,
@@ -56,6 +55,6 @@ describe('Authentication Route Guard', () => {
 
     expect(screen.queryByRole('heading', { name: 'กรุณาเข้าสู่ระบบก่อนเข้าใช้งาน' })).not.toBeInTheDocument();
     expect(screen.getByTestId('protected-content')).toBeInTheDocument();
-    expect(screen.getByText('Secret Farm Data')).toBeInTheDocument();
+    expect(screen.getByText('Farm Data')).toBeInTheDocument();
   });
 });

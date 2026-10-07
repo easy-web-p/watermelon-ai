@@ -1,11 +1,9 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense } from 'react';
 import type { ComponentType } from 'react';
 import { RouterProvider, useRouter, useScrollReset } from './lib/router';
 import { LogoMark } from './components/brand/Logo';
-import { Icon } from './components/ui/Icon';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ToastProvider, useToast } from './components/ui/Toast';
-import { useAuth } from './store/auth';
+import { ToastProvider } from './components/ui/Toast';
 
 /**
  * Every screen is code-split: farmers often open this on mobile data in the
@@ -102,102 +100,12 @@ function RouteFallback() {
   );
 }
 
-/**
- * Routes accessible without signing in.
- * All other routes require an authenticated user.
- */
-const PUBLIC_ROUTES = new Set([
-  '/',
-  '/evaluation',
-  '/ai-metrics',
-  '/research',
-  '/signin',
-  '/login',
-  '/register',
-  '/otp',
-  '/recover',
-  '/gmail-recover',
-  '/email-recover',
-  '/privacy',
-  '/terms',
-]);
-
-function AuthGateRequired({ path }: { path: string }) {
-  const { navigate } = useRouter();
-
-  function handleBack() {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      navigate('/');
-    }
-  }
-
-  const redirectUrl = `/signin?redirect=${encodeURIComponent(path + (typeof window !== 'undefined' ? window.location.search || '' : ''))}`;
-
-  return (
-    <div
-      className="flex min-h-screen flex-col items-center justify-center bg-surface px-4 py-12 text-center"
-      role="alert"
-    >
-      <div className="relative mb-6">
-        <div className="flex size-20 items-center justify-center rounded-3xl bg-primary/10 text-primary shadow-inner">
-          <Icon name="lock" size={40} />
-        </div>
-        <span className="absolute -bottom-1 -right-1 flex size-7 items-center justify-center rounded-full bg-surface-lowest text-lg shadow-sm">
-          🍉
-        </span>
-      </div>
-      <h1 className="text-headline-sm font-bold text-on-surface sm:text-headline-md">
-        กรุณาเข้าสู่ระบบก่อนเข้าใช้งาน
-      </h1>
-      <p className="mt-2 max-w-md text-body-md text-on-surface-variant">
-        ฟังก์ชันและข้อมูลในระบบ Watermelon AI สงวนสิทธิ์สำหรับสมาชิก กรุณาเข้าสู่ระบบหรือสมัครสมาชิกก่อนเข้าถึงหน้านี้
-      </p>
-      <div className="mt-6 flex flex-wrap justify-center gap-3">
-        <button
-          type="button"
-          onClick={() => navigate(redirectUrl)}
-          className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-label-lg font-semibold text-on-primary shadow-sm transition-transform active:scale-95"
-        >
-          <Icon name="login" size={18} />
-          เข้าสู่ระบบ / ลงทะเบียน
-        </button>
-        <button
-          type="button"
-          onClick={handleBack}
-          className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-outline-variant/50 bg-surface-lowest px-6 py-2.5 text-label-lg font-semibold text-on-surface transition-all hover:bg-surface-container active:scale-95"
-        >
-          <Icon name="arrow_back" size={18} />
-          กลับสู่หน้าแรก
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function Screen() {
-  const { path, navigate } = useRouter();
-  const user = useAuth((state) => state.user);
-  const toast = useToast();
+  const { path } = useRouter();
   useScrollReset(path);
 
   const statusMatch = path.match(/^\/status\/(\d{3})$/);
   if (statusMatch) return <StatusPage code={statusMatch[1]} />;
-
-  const isPublic = PUBLIC_ROUTES.has(path);
-
-  useEffect(() => {
-    if (!user && !isPublic) {
-      toast.info('กรุณาเข้าสู่ระบบก่อนเข้าใช้งาน');
-      const search = typeof window !== 'undefined' ? window.location.search || '' : '';
-      navigate(`/signin?redirect=${encodeURIComponent(path + search)}`, { replace: true });
-    }
-  }, [user, isPublic, path, navigate, toast]);
-
-  if (!user && !isPublic) {
-    return <AuthGateRequired path={path} />;
-  }
 
   if (path === '/chat' || path.startsWith('/chat/')) return <ChatAssistant />;
 

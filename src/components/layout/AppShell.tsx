@@ -5,8 +5,7 @@ import { Icon } from '../ui/Icon';
 import { LogoMark } from '../brand/Logo';
 import { Link, useRouter } from '../../lib/router';
 import { cn } from '../../lib/cn';
-import { useAuth, useDisplayUser } from '../../store/auth';
-import { useToast } from '../ui/Toast';
+import { useDisplayUser } from '../../store/auth';
 
 /**
  * Signed-in chrome: a fixed 20rem sidebar on desktop that becomes a drawer
@@ -16,8 +15,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { path, navigate } = useRouter();
   const user = useDisplayUser();
-  const authUser = useAuth((state) => state.user);
-  const toast = useToast();
 
   function handleBack() {
     if (window.history.length > 1) {
@@ -26,14 +23,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       navigate('/');
     }
   }
-
-  useEffect(() => {
-    if (!authUser) {
-      toast.info('กรุณาเข้าสู่ระบบก่อนเข้าใช้งาน');
-      const search = typeof window !== 'undefined' ? window.location.search || '' : '';
-      navigate(`/signin?redirect=${encodeURIComponent(path + search)}`, { replace: true });
-    }
-  }, [authUser, path, navigate, toast]);
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -45,46 +34,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       document.body.style.overflow = '';
     };
   }, [drawerOpen]);
-
-  if (!authUser) {
-    const redirectUrl = `/signin?redirect=${encodeURIComponent(path + (typeof window !== 'undefined' ? window.location.search || '' : ''))}`;
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-surface px-4 py-12 text-center" role="alert">
-        <div className="relative mb-6">
-          <div className="flex size-20 items-center justify-center rounded-3xl bg-primary/10 text-primary shadow-inner">
-            <Icon name="lock" size={40} />
-          </div>
-          <span className="absolute -bottom-1 -right-1 flex size-7 items-center justify-center rounded-full bg-surface-lowest text-lg shadow-sm">
-            🍉
-          </span>
-        </div>
-        <h1 className="text-headline-sm font-bold text-on-surface sm:text-headline-md">
-          กรุณาเข้าสู่ระบบก่อนเข้าใช้งาน
-        </h1>
-        <p className="mt-2 max-w-md text-body-md text-on-surface-variant">
-          เนื้อหาและฟังก์ชันส่วนนี้สงวนไว้สำหรับสมาชิก กรุณาเข้าสู่ระบบหรือสมัครสมาชิกเพื่อเริ่มต้นใช้งาน Watermelon AI
-        </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-3">
-          <button
-            type="button"
-            onClick={() => navigate(redirectUrl)}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-label-lg font-semibold text-on-primary shadow-sm transition-transform active:scale-95"
-          >
-            <Icon name="login" size={18} />
-            เข้าสู่ระบบ / ลงทะเบียน
-          </button>
-          <button
-            type="button"
-            onClick={handleBack}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-outline-variant/50 bg-surface-lowest px-6 py-2.5 text-label-lg font-semibold text-on-surface transition-all hover:bg-surface-container active:scale-95"
-          >
-            <Icon name="arrow_back" size={18} />
-            กลับสู่หน้าแรก
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-surface">
