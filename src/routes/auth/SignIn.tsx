@@ -95,12 +95,12 @@ export function AuthAside() {
 
           <div className="flex items-center gap-3 rounded-xl bg-surface-lowest/80 p-2.5 shadow-xs backdrop-blur-sm">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary/10 text-secondary">
-              <Icon name="track_changes" size={20} />
+              <Icon name="psychology" size={20} />
             </div>
             <div className="min-w-0">
-              <p className="text-label-lg font-semibold text-on-surface">แม่นยำ 98.4% ด้วย AI Computer Vision</p>
+              <p className="text-label-lg font-semibold text-on-surface">AI ผู้ช่วยดูแลแปลงแตงโมเฉพาะทาง</p>
               <p className="truncate text-caption text-on-surface-variant">
-                เทรนด้วยดาต้าเซ็ตใบแตงโมไทยกว่า 120,000 ภาพ
+                ตรวจคัดกรองโรคใบ ประเมินเสียงเคาะ และบันทึกค่า Brix
               </p>
             </div>
           </div>
@@ -110,39 +110,32 @@ export function AuthAside() {
               <Icon name="potted_plant" size={20} />
             </div>
             <div className="min-w-0">
-              <p className="text-label-lg font-semibold text-on-surface">ผู้ช่วยเกษตรกรไทยกว่า 8,500 แปลง</p>
+              <p className="text-label-lg font-semibold text-on-surface">พัฒนาจากการลงพื้นที่จริง</p>
               <p className="truncate text-caption text-on-surface-variant">
-                ครอบคลุมทั้งแตงโมกินรี, ตอร์ปิโด, ซอนญ่า และทัมอัพ
+                ศึกษาปัญหาเกษตรกรแตงโมสุพรรณบุรีและอ้างอิงงานวิจัย
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Farmer Testimonial & Security Credibility */}
+      {/* Decision Support & PDPA Notice */}
       <div className="relative z-10 mt-6 flex flex-col gap-2 rounded-xl bg-surface-lowest/75 p-4 shadow-xs backdrop-blur-sm">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 text-[#f59e0b]">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Icon key={i} name="star" size={16} filled />
-            ))}
-            <span className="ml-1 text-label-md font-bold text-on-surface">5.0 / 5.0</span>
+          <div className="flex items-center gap-1.5 text-primary">
+            <Icon name="verified_user" size={18} />
+            <span className="text-label-md font-bold text-on-surface">คุ้มครองข้อมูลแปลง</span>
           </div>
-          <span className="text-caption font-semibold text-secondary">ใช้งานฟรีตลอดชีพ</span>
+          <span className="text-caption font-semibold text-secondary">มาตรฐาน PDPA</span>
         </div>
 
-        <p className="text-body-md italic text-on-surface">
-          “สมัครครั้งเดียว สแกนตรวจโรคแตงโมฟรีตลอดชีพผ่านเว็บและ LINE สะดวกมาก เจออาการแอนแทรคโนสไว จัดการยาทัน ลดความเสียหายได้เกิน 80%”
+        <p className="text-body-sm text-on-surface-variant">
+          ภาพถ่ายและข้อมูลแปลงเป็นสิทธิ์ของเกษตรกร ข้อมูลไม่ถูกส่งต่อ และ AI เป็นเครื่องมือช่วยตัดสินใจเบื้องต้นที่โปร่งใส
         </p>
 
-        <div className="flex items-center gap-3 pt-1">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary-fixed text-label-lg font-bold text-on-secondary-fixed">
-            ส
-          </div>
-          <div>
-            <p className="text-label-md font-semibold text-on-surface">นายสมพร สวนสุพรรณ</p>
-            <p className="text-caption text-on-surface-variant">เกษตรกรดีเด่น จ.สุพรรณบุรี (แปลง 45 ไร่)</p>
-          </div>
+        <div className="flex items-center gap-2 pt-1 text-caption text-on-surface-variant">
+          <Icon name="info" size={16} />
+          <span>ควรยืนยันอาการกับนักวิชาการเกษตรก่อนใช้สารเคมี</span>
         </div>
       </div>
     </>
@@ -178,8 +171,8 @@ export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'r
   }, [mode]);
 
   // Sign in form state
-  const [identifier, setIdentifier] = useState('084-592-8190');
-  const [signInPassword, setSignInPassword] = useState('••••••••••••');
+  const [identifier, setIdentifier] = useState('');
+  const [signInPassword, setSignInPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
 
   // Register form state
@@ -221,32 +214,6 @@ export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'r
       toast.success(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับ ${user.name}`);
       navigate(redirectTarget);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : '';
-      const isServerUnavailable =
-        msg.includes('เซิร์ฟเวอร์ API ยังไม่เปิดให้บริการ') ||
-        msg.includes('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้') ||
-        msg.includes('คำขอไม่สำเร็จ (รหัส 502)') ||
-        msg.includes('คำขอไม่สำเร็จ (รหัส 503)');
-
-      if (isServerUnavailable) {
-        const digits = identifier.replace(/\D/g, '');
-        const clientUser = {
-          id: 'farmer-' + (digits.slice(-4) || 'user'),
-          name: identifier.includes('@') ? identifier.split('@')[0] : `เกษตรกร (${digits.slice(-4) || identifier})`,
-          phone: identifier.includes('@') ? undefined : identifier,
-          email: identifier.includes('@') ? identifier : undefined,
-          role: 'farmer',
-        };
-        useAuth.setState({
-          user: clientUser,
-          token: 'farmer-session-' + Date.now(),
-          status: 'idle',
-          error: null,
-        });
-        toast.success(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับคุณ ${clientUser.name}`);
-        navigate(redirectTarget);
-        return;
-      }
       toast.error(error instanceof Error ? error.message : 'เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
     }
   }
@@ -286,32 +253,6 @@ export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'r
       toast.success(`สมัครสมาชิกสำเร็จ! ยินดีต้อนรับคุณ ${user.name}`);
       navigate(redirectTarget);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : '';
-      const isServerUnavailable =
-        msg.includes('เซิร์ฟเวอร์ API ยังไม่เปิดให้บริการ') ||
-        msg.includes('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้') ||
-        msg.includes('คำขอไม่สำเร็จ (รหัส 502)') ||
-        msg.includes('คำขอไม่สำเร็จ (รหัส 503)');
-
-      if (isServerUnavailable) {
-        const clientUser = {
-          id: 'farmer-' + cleanPhone.slice(-4),
-          name: fullName.trim() || `เกษตรกร (${cleanPhone.slice(-4)})`,
-          phone: registerPhone,
-          role: 'farmer',
-          province,
-          plotSize,
-        };
-        useAuth.setState({
-          user: clientUser,
-          token: 'farmer-session-' + Date.now(),
-          status: 'idle',
-          error: null,
-        });
-        toast.success(`สมัครสมาชิกสำเร็จ! ยินดีต้อนรับคุณ ${clientUser.name}`);
-        navigate(redirectTarget);
-        return;
-      }
       toast.error(error instanceof Error ? error.message : 'สมัครสมาชิกไม่สำเร็จ');
     }
   }
@@ -323,45 +264,9 @@ export function SignIn({ initialMode = 'signin' }: { initialMode?: 'signin' | 'r
     }
 
     try {
-      let fbUser: any = null;
-      let idToken: string | undefined;
-
-      try {
-        const { loginWithFirebaseGoogle } = await import('../../lib/firebase');
-        fbUser = await loginWithFirebaseGoogle();
-        idToken = await fbUser.getIdToken();
-      } catch (fbErr: any) {
-        if (fbErr?.code === 'auth/popup-closed-by-user' || fbErr?.code === 'auth/cancelled-popup-request') {
-          return;
-        }
-        throw fbErr;
-      }
-
-      try {
-        const user = await socialLogin(provider);
-        toast.success(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับ ${user.name}`);
-        navigate(redirectTarget);
-      } catch (apiErr) {
-        if (fbUser) {
-          const clientUser = {
-            id: fbUser.uid,
-            name: fbUser.displayName || 'ผู้ใช้งาน Google',
-            email: fbUser.email || undefined,
-            avatar: fbUser.photoURL || undefined,
-            role: 'farmer',
-          };
-          useAuth.setState({
-            user: clientUser,
-            token: idToken || 'firebase-google-token',
-            status: 'idle',
-            error: null,
-          });
-          toast.success(`เข้าสู่ระบบด้วย Google สำเร็จ! ยินดีต้อนรับคุณ ${clientUser.name}`);
-          navigate(redirectTarget);
-          return;
-        }
-        throw apiErr;
-      }
+      const user = await socialLogin(provider);
+      toast.success(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับ ${user.name}`);
+      navigate(redirectTarget);
     } catch (error) {
       if (error instanceof Error && error.message === 'ยกเลิกการเข้าสู่ระบบ') return;
       toast.error(error instanceof Error ? error.message : 'เข้าสู่ระบบไม่สำเร็จ');
