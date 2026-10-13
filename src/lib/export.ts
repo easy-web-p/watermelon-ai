@@ -98,15 +98,19 @@ export function toBibTeX(paper: {
   authors: string;
   venue: string;
   year: number;
+  doi?: string;
 }): string {
-  const key = `watermelonai${paper.year}${paper.id.replace(/[^a-z0-9]/gi, '')}`;
+  const key = `${paper.id.replace(/[^a-z0-9]/gi, '')}${paper.year}`;
+  // The note used to read "Watermelon AI Research" on every entry, which
+  // credited this project for work published by other people. Entries now
+  // carry their DOI instead, so a pasted citation points at the real source.
   return [
     `@article{${key},`,
     `  title   = {${paper.title}},`,
     `  author  = {${paper.authors.replace(/,\s*/g, ' and ')}},`,
     `  journal = {${paper.venue}},`,
     `  year    = {${paper.year}},`,
-    `  note    = {Watermelon AI Research}`,
+    ...(paper.doi ? [`  doi     = {${paper.doi}},`] : []),
     `}`,
   ].join('\n');
 }

@@ -1,5 +1,30 @@
 # การนำขึ้นใช้งานจริง (Cloud Run + Firebase Hosting)
 
+> **สถานะเส้นทางฟรี:** เว็บในเครื่องใช้ Ollama/Qwen3.5:4b ที่ `127.0.0.1:11434`
+> และปิดโมเดลที่คิดเงินต่อครั้งอยู่แล้ว แต่ Dockerfile ของ Node สำหรับ Cloud Run
+> ไม่ได้บรรจุ Ollama หรือไฟล์โมเดลใน `.local-ai/` ดังนั้นการนำเว็บขึ้น Cloud Run
+> ตามขั้นตอนด้านล่างเพียงอย่างเดียวจะทำให้แชทตอบ 503 เมื่อปิด Gemini
+> ต้องจัดบริการโมเดลฟรีแยกต่างหากก่อนเปิดแชทสาธารณะ และต้องย้ายข้อมูล `data/`
+> กับ `uploads/` ไปยังที่เก็บถาวรก่อน เพราะดิสก์ของคอนเทนเนอร์ไม่ใช่ฐานข้อมูลถาวร
+> ค่าใช้จ่าย API ต่อข้อความเป็นศูนย์ได้ แต่โฮสติ้งสาธารณะ/เครื่องที่เปิดตลอดเวลา
+> ยังมีค่าไฟหรือค่าทรัพยากร และ [Cloud Run อาจคิดเงินเมื่อเกินโควตาฟรี](https://cloud.google.com/run/pricing)
+
+## ทางเลือกเผยแพร่จากเครื่องนี้โดยไม่เช่าเซิร์ฟเวอร์
+
+ให้รัน Node API, FastAPI vision และ Ollama บนเครื่องนี้โดยใช้ข้อมูลถาวรบนไดรฟ์ D
+แล้วเผยแพร่ origin ของ Node ผ่าน Cloudflare Tunnel แบบที่จัดการผ่านบัญชีและผูกโดเมน
+Cloudflare ระบุว่า [Tunnel เผยแพร่แอปผ่าน public hostname ได้โดยไม่ต้องซื้อ Access plan](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/)
+ส่วน [Quick Tunnel มีไว้ทดสอบ ไม่รับประกัน uptime และไม่รองรับ SSE](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)
+จึงไม่ใช้ Quick Tunnel เป็นเว็บจริง โดยเฉพาะเมื่อแชทตอบแบบสตรีม
+
+ก่อนเปิดให้บุคคลทั่วไปใช้ ต้องตั้ง `NODE_ENV=production`, ตั้ง `JWT_SECRET` และ
+`STORAGE_SECRET` ใหม่ที่เก็บเป็นความลับ, จำกัด origin, ปิด demo OTP และตรวจ
+การล็อกอินจริง, ทดสอบอัปโหลด/ลบข้อมูล/ความยินยอม/การจำกัดอัตราจากภายนอก,
+สำรอง `data/` กับ `uploads/` บน D และทดสอบกู้คืน รวมทั้งตรวจว่า Ollama และ
+vision service ทำงานต่อเนื่องเมื่อรีสตาร์ตเครื่อง ระบบนี้ต้องเปิดเครื่องและ
+เชื่อมต่ออินเทอร์เน็ตตลอดเวลา ค่า API ต่อข้อความอาจเป็นศูนย์ แต่ค่าไฟและ
+โดเมน (หากใช้) ยังมีอยู่ ยังไม่ควรเปิด public hostname ก่อนผ่านรายการนี้
+
 เอกสารนี้อธิบายการต่อเว็บจริงที่ <https://acoustic-fruit-ripeness.web.app> เข้ากับ backend
 
 ## ปัญหาที่ต้องแก้

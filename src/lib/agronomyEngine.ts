@@ -67,13 +67,12 @@ export const PLANTING_SYSTEMS: readonly PlantingSystem[] = [
 
 export type SeasonType = 'dry_winter' | 'summer' | 'rainy';
 
-export const SEASONS: readonly { id: SeasonType; label: string; months: string; yieldFactor: number; brixBonus: number; diseaseRisk: string }[] = [
+export const SEASONS: readonly { id: SeasonType; label: string; months: string; yieldFactor: number; diseaseRisk: string }[] = [
   {
     id: 'dry_winter',
     label: 'ฤดูแล้ง / หนาว (พ.ย. – ก.พ.)',
     months: 'พฤศจิกายน – กุมภาพันธ์',
     yieldFactor: 1.05,
-    brixBonus: 0.6,
     diseaseRisk: 'เสี่ยงเพลี้ยไฟ ไรแดง และไวรัสใบด่าง แต่ความหวานจะสูงที่สุดในรอบปี',
   },
   {
@@ -81,7 +80,6 @@ export const SEASONS: readonly { id: SeasonType; label: string; months: string; 
     label: 'ฤดูร้อน (มี.ค. – พ.ค.)',
     months: 'มีนาคม – พฤษภาคม',
     yieldFactor: 1.0,
-    brixBonus: 0.3,
     diseaseRisk: 'เติบโตรวดเร็ว ต้องการน้ำสูง ระวังแดดเผาผล (Sunburn) และไส้ล้ม',
   },
   {
@@ -89,7 +87,6 @@ export const SEASONS: readonly { id: SeasonType; label: string; months: string; 
     label: 'ฤดูฝน (มิ.ย. – ต.ค.)',
     months: 'มิถุนายน – ตุลาคม',
     yieldFactor: 0.88,
-    brixBonus: -0.4,
     diseaseRisk: 'ความชื้นสูง ระวังโรคราน้ำค้าง แอนแทรคโนส และผลแตก ระบายน้ำต้องดีมาก',
   },
 ] as const;
@@ -157,8 +154,8 @@ export type FullAgronomyCalculation = {
   tonnesHigh: number;
   gradeAYieldTonnes: number;
   gradeBYieldTonnes: number;
-  expectedBrixLow: number;
-  expectedBrixHigh: number;
+  expectedBrixLow: null;
+  expectedBrixHigh: null;
   yieldScore: number; // 0-100 meter
 
   // Water requirements
@@ -273,9 +270,9 @@ export function calculateAgronomyPlan(input: CalculationInput): FullAgronomyCalc
   const gradeAYieldTonnes = Number((avgTonnes * gradeARatio).toFixed(2));
   const gradeBYieldTonnes = Number((avgTonnes * (1 - gradeARatio)).toFixed(2));
 
-  // Brix projection
-  const expectedBrixLow = Number((cultivar.brix[0] + season.brixBonus).toFixed(1));
-  const expectedBrixHigh = Number((cultivar.brix[1] + season.brixBonus).toFixed(1));
+  // No paired fruit measurements justify a cultivar/season Brix projection.
+  const expectedBrixLow = null;
+  const expectedBrixHigh = null;
 
   // Yield Potential Score: 0-100
   const yieldScore = Math.min(99, Math.round(75 + (season.yieldFactor - 1) * 60 + (gradeARatio - 0.7) * 40));
@@ -386,7 +383,7 @@ export function calculateAgronomyPlan(input: CalculationInput): FullAgronomyCalc
       tone: 'positive' as const,
       detail: `สายพันธุ์ ${cultivar.name} (${cultivar.code}) มีจุดเด่น: ${cultivar.strengths.join(
         ' • ',
-      )} ด้วยความหวานเป้าหมาย ${cultivar.brix[0]}–${cultivar.brix[1]}° Brix`,
+      )} ค่า °Brix ต้องวัดจากผลจริง ไม่ได้ทำนายจากชื่อสายพันธุ์`,
     },
     {
       title: `คำแนะนำตามฤดูกาล: ${season.label}`,

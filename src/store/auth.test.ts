@@ -82,26 +82,48 @@ describe('auth store', () => {
     expect(useAuth.getState().status).toBe('idle');
   });
 
-  it('applies consent changes locally even when the server call fails', () => {
+  it('does not claim consent changed when the server call fails', async () => {
     useAuth.setState({ user: FARMER, token: 'jwt-1' });
     const update = vi.spyOn(api, 'updateConsent').mockRejectedValue(new Error('offline'));
 
-    useAuth.getState().setConsent({ improveModel: false });
+    await expect(useAuth.getState().setConsent({ improveModel: true })).rejects.toThrow('offline');
 
     expect(useAuth.getState().consent.improveModel).toBe(false);
-    expect(useAuth.getState().consent.analytics).toBe(true);
     expect(update).toHaveBeenCalled();
   });
 
-  it('does not post consent to the server while signed out', () => {
-    // Consent is stored per account, so there is no account to store it
-    // against yet; the request would be a guaranteed 401 on every toggle.
-    const update = vi.spyOn(api, 'updateConsent').mockResolvedValue(undefined);
+  it('rejects consent changes while signed out', async () => {
+    const update = vi.spyOn(api, 'updateConsent');
 
-    useAuth.getState().setConsent({ marketing: true });
+    await expect(useAuth.getState().setConsent({ marketing: true })).rejects.toThrow('เข้าสู่ระบบ');
 
-    expect(useAuth.getState().consent.marketing).toBe(true);
+    expect(useAuth.getState().consent.marketing).toBe(false);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('loads account and consent from the server instead of an old local default', async () => {
+    useAuth.setState({ user: FARMER, token: 'jwt-1' });
+    vi.spyOn(api, 'accountSettings').mockResolvedValue({
+      success: true,
+      user: { ...FARMER, organization: 'สวนจริง' },
+      consent: { ...DEFAULT_CONSENT, improveModel: true },
+      capabilities: { passwordChange: true, avatarUpload: false, twoFactor: false, lineNotifications: false },
+    });
+
+    await useAuth.getState().refreshAccount();
+
+    expect(useAuth.getState().user?.organization).toBe('สวนจริง');
+    expect(useAuth.getState().consent.improveModel).toBe(true);
+  });
+
+  it('updates the visible profile only after the server confirms the save', async () => {
+    useAuth.setState({ user: FARMER, token: 'jwt-1' });
+    const save = vi.spyOn(api, 'updateProfile').mockResolvedValue({ success: true, user: { ...FARMER, name: 'ชื่อใหม่' } });
+
+    await useAuth.getState().saveProfile({ name: 'ชื่อใหม่' });
+
+    expect(save).toHaveBeenCalledWith({ name: 'ชื่อใหม่' });
+    expect(useAuth.getState().user?.name).toBe('ชื่อใหม่');
   });
 
   it('rejects a 9-digit number, which the old message asked for 10 of', async () => {
@@ -172,40 +194,31 @@ describe('auth store', () => {
     expect(state.pendingOtp).toBeNull();
   });
 
-  it('creates fallback user session when socialLogin hits offline/502', async () => {
+  it('does not fabricate a social session when the API is offline', async () => {
     vi.spyOn(api, 'socialLogin').mockRejectedValue(new apiModule.ApiError('เซิร์ฟเวอร์ยังไม่เปิดให้บริการ', 502));
 
-    const user = await useAuth.getState().socialLogin('google', {
-      email: 'hi00000087@gmail.com',
-      name: 'hi00000087 (Google)',
-    });
+    await expect(useAuth.getState().socialLogin('line')).rejects.toThrow();
 
-    expect(user.email).toBe('hi00000087@gmail.com');
-    expect(user.name).toBe('hi00000087 (Google)');
-    expect(useAuth.getState().token).toBeTruthy();
-    expect(useAuth.getState().user).toEqual(user);
+    expect(useAuth.getState().token).toBeNull();
+    expect(useAuth.getState().user).toBeNull();
     expect(useAuth.getState().status).toBe('idle');
   });
 
-  it('allows password login fallback when API is offline/502', async () => {
+  it('does not fabricate a password session when the API is offline', async () => {
     vi.spyOn(api, 'login').mockRejectedValue(new apiModule.ApiError('เซิร์ฟเวอร์ยังไม่เปิดให้บริการ', 502));
 
-    const user = await useAuth.getState().loginWithPassword('farmer@test.com', 'pass123');
+    await expect(useAuth.getState().loginWithPassword('farmer@test.com', 'pass123')).rejects.toThrow();
 
-    expect(user.email).toBe('farmer@test.com');
-    expect(useAuth.getState().user).toEqual(user);
-    expect(useAuth.getState().token).toBeTruthy();
+    expect(useAuth.getState().user).toBeNull();
+    expect(useAuth.getState().token).toBeNull();
   });
 
-  it('provides demo OTP code when requestOtp hits 502', async () => {
+  it('does not invent an OTP code when the API is offline', async () => {
     vi.spyOn(api, 'sendOtp').mockRejectedValue(new apiModule.ApiError('เซิร์ฟเวอร์ยังไม่เปิดให้บริการ', 502));
-    vi.spyOn(api, 'verifyOtp').mockRejectedValue(new apiModule.ApiError('เซิร์ฟเวอร์ยังไม่เปิดให้บริการ', 502));
 
-    await useAuth.getState().requestOtp('0845928190');
-    expect(useAuth.getState().pendingOtp?.demoCode).toBe('123456');
+    await expect(useAuth.getState().requestOtp('0845928190')).rejects.toThrow();
 
-    const user = await useAuth.getState().verifyOtp('123456');
-    expect(user.phone).toBe('0845928190');
-    expect(useAuth.getState().user).toEqual(user);
+    expect(useAuth.getState().pendingOtp).toBeNull();
+    expect(useAuth.getState().user).toBeNull();
   });
 });

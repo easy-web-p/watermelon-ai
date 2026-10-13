@@ -12,7 +12,7 @@
  * breaks a test instead of silently emptying someone's conversation.
  */
 
-import type { ApiAttachment, ApiConversation, ApiMessage, DiseaseDetection, DiseaseRecord, KnockAnalysis } from './api';
+import type { ApiAttachment, ApiConversation, ApiMessage, DiseaseDetection, DiseaseRecord, KnockAnalysis, VisionCompareResponse } from './api';
 
 export const CONVERSATION_STORAGE_KEY = 'watermelon.chat.conversation';
 export const CONVERSATION_LIST_STORAGE_KEY = 'watermelon.chat.conversations';
@@ -105,6 +105,9 @@ export type FeedMessage = {
   audioUrl?: string;
   knock?: KnockAnalysis;
   disease?: DiseaseDetection;
+  visionCompare?: VisionCompareResponse;
+  modelVersion?: string;
+  createdAt?: string;
   failed?: boolean;
 };
 
@@ -177,7 +180,41 @@ export function toFeedMessage(message: ApiMessage): FeedMessage {
     audioUrl: firstOfType(message.attachments, 'audio')?.url,
     knock: message.knockAnalysis,
     disease: message.diseaseDetection,
+    modelVersion: message.modelVersion,
+    createdAt: message.createdAt,
   };
+}
+
+/**
+ * Supplemental comparisons are local-only: vision-compare does not write chat
+ * turns on the server. Keep each comparison and its uploaded image when the
+ * server history refreshes, without duplicating the server's other turns.
+ */
+export function mergeServerAndLocalVisionMessages(
+  serverMessages: FeedMessage[],
+  localMessages: FeedMessage[],
+): FeedMessage[] {
+  const merged = [...serverMessages];
+  const seen = new Set(serverMessages.map((message) => message.id));
+  for (let index = 0; index < localMessages.length; index += 1) {
+    const observation = localMessages[index];
+    if (!observation.visionCompare) continue;
+    const photo = localMessages[index - 1];
+    for (const message of [photo?.role === 'user' && photo.imageUrl ? photo : null, observation]) {
+      if (message && !seen.has(message.id)) {
+        merged.push(message);
+        seen.add(message.id);
+      }
+    }
+  }
+  return merged
+    .map((message, index) => ({ message, index }))
+    .sort((left, right) =>
+      left.message.createdAt && right.message.createdAt
+        ? left.message.createdAt.localeCompare(right.message.createdAt) || left.index - right.index
+        : left.index - right.index,
+    )
+    .map(({ message }) => message);
 }
 
 /** Local-first persistence: read stored conversations. */

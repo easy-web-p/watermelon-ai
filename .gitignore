@@ -1,4 +1,5 @@
 node_modules/
+.local-ai/
 build/
 dist/
 coverage/
@@ -47,3 +48,6 @@ data/*.bak
 # Firebase and Data Connect caches
 .firebase/
 **/.dataconnect/
+
+# ฐานข้อมูลจริงมีข้อมูลส่วนบุคคล (อีเมล เบอร์โทร แชท) — repo เป็น public ห้าม commit
+data/watermelon_db.json

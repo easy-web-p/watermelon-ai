@@ -10,62 +10,16 @@ import { DiseaseResultCard } from '../components/domain/DiseaseResultCard';
 import { VisionEngineModal } from '../components/domain/VisionEngineModal';
 import { VisionCompareCard } from '../components/domain/VisionCompareCard';
 import {
-  ApiError,
-  NetworkError,
   api,
   type DiseaseDetection,
   type DiseaseModelStatus,
   type VisionCompareResponse,
 } from '../lib/api';
-import { runClientDiseaseAnalysis } from '../lib/clientDiseaseHeuristic';
 import { saveLocalDiseaseRecord } from '../lib/chatHistory';
 import { compressImage, validateImage } from '../lib/media';
 import { cn } from '../lib/cn';
 import type { ResourceState } from '../types/resource';
-import type { VisionEngineInfo, VisionEngineName } from '../lib/visionEngines';
-
-/**
- * รายการที่ใช้เมื่อเรียก `GET /engines` ไม่สำเร็จ
- *
- * มีแต่ engine ที่รันในเครื่องและไม่มีค่าใช้จ่าย โดยเจตนา — ตอนที่เรียกรายการจริง
- * ไม่ได้ เราไม่รู้ว่าฝั่งเซอร์วิสเปิด engine ที่เสียเงินไว้หรือไม่ การโฆษณาไว้
- * ล่วงหน้าจะทำให้ผู้ใช้กดเลือกแล้วเกิดค่าใช้จ่าย หรือได้ข้อผิดพลาดเปล่า ๆ
- * ถ้าเซอร์วิสเปิดไว้จริง รายการจากเซอร์วิสจะมาแทนรายการนี้เองเมื่อเรียกสำเร็จ
- */
-export const FALLBACK_ENGINES: VisionEngineInfo[] = [
-  {
-    name: 'legacy4',
-    title_th: 'Legacy 4 (โมเดลมาตรฐาน)',
-    classes: ['Anthracnose', 'Downy_Mildew', 'Mosaic_Virus', 'Healthy'],
-    class_count: 4,
-    image_size: 224,
-    model_version: 'v3-calibrated',
-    description_th: 'โมเดลจำแนก 4 คลาสหลักที่เทรนและปรับเทียบความน่าจะเป็นบนภาพใบแตงโมจริง',
-    good_for_th: ['ตรวจแอนแทรคโนส ราน้ำค้าง ไวรัสใบด่าง และใบปกติ', 'ตัวเลขความมั่นใจผ่านการปรับเทียบ (Calibrated Probability)'],
-    limits_th: ['ตรวจได้เฉพาะ 4 คลาสหลัก อาการอื่นจะถูกเลือกตัวที่ใกล้ที่สุด'],
-    calibrated: true,
-    needs_candidates: false,
-    costs_money: false,
-    class_provenance: {},
-    metrics: {},
-  },
-  {
-    name: 'wide9',
-    title_th: 'Wide-9 (โมเดล 9 คลาส)',
-    classes: ['alternaria_blight', 'angular_leaf_spot', 'cercospora_leaf_spot', 'downy_mildew', 'leaf_curl_virus', 'phytophthora_blight', 'powdery_mildew', 'watermelon_mosaic_virus', 'healthy'],
-    class_count: 9,
-    image_size: 224,
-    model_version: '444-wide9',
-    description_th: 'โมเดล 9 คลาส ครอบคลุมโรคกว้างขวางขึ้น โดยเฉพาะราแป้งและโรคใบจุด',
-    good_for_th: ['ตรวจราแป้ง (Powdery Mildew) ซึ่งโมเดล 4 คลาสตรวจไม่ได้', 'ตรวจโรคใบจุดอัลเทอร์นาเรียและเซอร์โคสปอรา'],
-    limits_th: ['ยังไม่ได้ปรับเทียบความน่าจะเป็น (ตัวเลขเป็นคะแนน Softmax ดิบ)', 'บางคลาสเทรนจากภาพพืชชนิดอื่นที่อาการคล้ายกัน'],
-    calibrated: false,
-    needs_candidates: false,
-    costs_money: false,
-    class_provenance: {},
-    metrics: {},
-  },
-];
+import { FALLBACK_ENGINES, type VisionEngineInfo, type VisionEngineName } from '../lib/visionEngines';
 
 const PLANT_PARTS = [
   { id: 'mature_leaf', label: 'ใบแก่ช่วงโคน/กลางเถา' },
@@ -93,9 +47,11 @@ export function DiseaseScan() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [scanState, setScanState] = useState<ResourceState<DiseaseDetection>>({ status: 'idle' });
   const [modelStatus, setModelStatus] = useState<DiseaseModelStatus | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [selectedEngine, setSelectedEngine] = useState<VisionEngineName>('legacy4');
   const [engineModalOpen, setEngineModalOpen] = useState(false);
-  const [enginesList, setEnginesList] = useState<VisionEngineInfo[]>(FALLBACK_ENGINES);
+  const [enginesList, setEnginesList] = useState<readonly VisionEngineInfo[]>(FALLBACK_ENGINES);
+  const [enginesError, setEnginesError] = useState<string | null>(null);
   const [compareState, setCompareState] = useState<{
     status: 'idle' | 'loading' | 'success' | 'error';
     data?: VisionCompareResponse;
@@ -112,18 +68,26 @@ export function DiseaseScan() {
     api
       .diseaseModelStatus()
       .then((res) => {
-        if (active) setModelStatus(res);
+        if (active) {
+          setModelStatus(res);
+          setModelError(null);
+        }
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (active) setModelError(error instanceof Error ? error.message : 'เชื่อมต่อบริการวิเคราะห์ภาพไม่ได้');
+      });
 
     api
       .visionEngines()
       .then((res) => {
-        if (active && res.engines && res.engines.length > 0) {
+        if (active) {
           setEnginesList([...res.engines]);
+          setEnginesError(null);
         }
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (active) setEnginesError(error instanceof Error ? error.message : 'โหลดรายการเครื่องยนต์ไม่ได้');
+      });
 
     return () => {
       active = false;
@@ -166,6 +130,10 @@ export function DiseaseScan() {
   }
 
   async function runCompare(engine: VisionEngineName) {
+    if (!enginesList.some((item) => item.name === engine)) {
+      toast.error(enginesError ?? 'เครื่องยนต์นี้ยังไม่พร้อมใช้งาน');
+      return;
+    }
     if (!imagePreview) {
       toast.error('กรุณาถ่ายภาพหรือเลือกรูปใบแตงโมก่อน');
       return;
@@ -209,6 +177,15 @@ export function DiseaseScan() {
       return;
     }
 
+    await runPrimaryAnalysis();
+  }
+
+  async function runPrimaryAnalysis() {
+    if (!imagePreview) {
+      toast.error('กรุณาถ่ายภาพหรือเลือกรูปใบแตงโมก่อน');
+      return;
+    }
+
     setScanState({ status: 'loading' });
 
     try {
@@ -219,26 +196,13 @@ export function DiseaseScan() {
         incidence,
       });
 
-      let result: DiseaseDetection;
-      try {
-        result = await api.detectDisease({
-          imageBase64: imagePreview,
-          notes,
-          mode: 'balanced',
-        });
-        toast.success('วิเคราะห์ภาพด้วย Vision Engine สำเร็จ');
-      } catch (apiErr: unknown) {
-        const isOfflineOrPreview =
-          (apiErr instanceof ApiError && (apiErr.status === 404 || apiErr.status === 502 || apiErr.status === 503)) ||
-          apiErr instanceof NetworkError;
-
-        if (isOfflineOrPreview) {
-          result = await runClientDiseaseAnalysis(imagePreview, { plantPart, onset, incidence });
-          toast.info('วิเคราะห์ภาพด้วยโมเดลคลาวด์พรีวิวตามหลักวิชาการเรียบร้อย');
-        } else {
-          throw apiErr;
-        }
-      }
+      const result = await api.detectDisease({
+        imageBase64: imagePreview,
+        notes,
+        mode: 'balanced',
+        engine: 'legacy4',
+      });
+      toast.success('วิเคราะห์ภาพด้วย Vision Engine สำเร็จ');
 
       // Persist to local disease history so records survive page reload
       saveLocalDiseaseRecord({
@@ -289,7 +253,7 @@ export function DiseaseScan() {
               {modelStatus?.online ? (
                 <LiveBadge>Vision Engine v3 ({modelStatus.vision?.architecture || 'EfficientNet-B0'}) ออนไลน์</LiveBadge>
               ) : (
-                <LiveBadge>Vision Engine v3</LiveBadge>
+                <Badge tone="neutral">Vision Engine ยังไม่พร้อม</Badge>
               )}
             </>
           }
@@ -403,6 +367,7 @@ export function DiseaseScan() {
                 <button
                   type="button"
                   onClick={() => setSelectedEngine('legacy4')}
+                  disabled={!enginesList.some((engine) => engine.name === 'legacy4')}
                   className={cn(
                     'flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer',
                     selectedEngine === 'legacy4'
@@ -412,12 +377,15 @@ export function DiseaseScan() {
                 >
                   <span className="text-label-md font-bold">Legacy 4</span>
                   <span className="text-[11px] leading-tight">โมเดลมาตรฐาน (4 คลาส)</span>
-                  <span className="mt-1 text-[10px] text-secondary font-semibold">✓ ปรับเทียบแล้ว (ฟรี)</span>
+                  <span className="mt-1 text-[10px] text-secondary font-semibold">
+                    {enginesList.find((engine) => engine.name === 'legacy4')?.calibrated ? '✓ ปรับเทียบแล้ว' : 'ยังไม่ปรับเทียบ'} (ฟรี)
+                  </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setSelectedEngine('wide9')}
+                  disabled={!enginesList.some((engine) => engine.name === 'wide9')}
                   className={cn(
                     'flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer',
                     selectedEngine === 'wide9'
@@ -430,6 +398,8 @@ export function DiseaseScan() {
                   <span className="mt-1 text-[10px] text-outline font-semibold">⚡ กว้างขวาง (ฟรี)</span>
                 </button>
               </div>
+
+              {(enginesError || modelError) && <p role="alert" className="text-caption text-error">บริการ AI ยังไม่พร้อม: {enginesError ?? modelError}</p>}
 
               <div className="rounded-lg bg-surface-container-low px-3 py-2 text-caption text-on-surface-variant flex items-center justify-between">
                 <span>
@@ -598,7 +568,7 @@ export function DiseaseScan() {
                   </span>
                   <div>
                     <p className="text-title-md font-bold text-on-surface">
-                      กำลังอ่านภาพด้วยโมเดลทางเลือก ({compareState.engine === 'wide9' ? 'Wide-9' : 'Claude Vision'})
+                      กำลังอ่านภาพด้วยโมเดลทางเลือก ({enginesList.find((engine) => engine.name === compareState.engine)?.title_th ?? compareState.engine})
                     </p>
                     <p className="text-body-md text-on-surface-variant">
                       ระบบกำลังประมวลผลข้อสังเกตเพิ่มเติม...
@@ -616,27 +586,13 @@ export function DiseaseScan() {
 
                   <div className="rounded-xl border border-primary/20 bg-melon-tint/30 p-4 text-center">
                     <p className="text-body-sm text-on-surface font-semibold mb-2">
-                      ต้องการคำวินิจฉัยอย่างเป็นทางการพร้อมใบสั่งยาและระยะเก็บเกี่ยวปลอดภัย (PHI)?
+                      ต้องการผลประเมินจากโมเดลหลักพร้อมแนวทางจัดการและระยะปลอดภัยก่อนเก็บเกี่ยว (PHI)?
                     </p>
                     <Button
                       size="sm"
                       onClick={() => {
                         setSelectedEngine('legacy4');
-                        void api
-                          .detectDisease({
-                            imageBase64: imagePreview!,
-                            notes: JSON.stringify({ plotId, plantPart, onset, incidence }),
-                            mode: 'balanced',
-                            engine: 'legacy4',
-                          })
-                          .then((res) => {
-                            setScanState({ status: 'success', data: res });
-                          })
-                          .catch(() => {
-                            runClientDiseaseAnalysis(imagePreview!, { plantPart, onset, incidence }).then((res) => {
-                              setScanState({ status: 'success', data: res });
-                            });
-                          });
+                        void runPrimaryAnalysis();
                       }}
                     >
                       <Icon name="biotech" size={16} />
@@ -683,31 +639,23 @@ export function DiseaseScan() {
                       <Badge tone="neutral" className="text-[10px]">ข้อสังเกตเสริม</Badge>
                     </div>
                     <p className="text-caption text-on-surface-variant">
-                      ต้องการดูว่าโมเดลอื่น (Wide-9 หรือ Claude Vision) สังเกตเห็นอาการใดเพิ่มเติมหรือไม่?
+                      เลือกเครื่องยนต์ที่เซอร์วิสเปิดใช้อยู่เพื่อดูข้อสังเกตเพิ่มเติมจากภาพเดียวกัน
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant={compareState.engine === 'wide9' && compareState.status === 'success' ? 'secondary' : 'ghost'}
-                        disabled={compareState.status === 'loading'}
-                        onClick={() => void runCompare('wide9')}
-                      >
-                        <Icon name="search" size={16} />
-                        {compareState.status === 'loading' && compareState.engine === 'wide9'
-                          ? 'กำลังประมวลผล Wide-9...'
-                          : 'สแกนเทียบด้วย Wide-9 (9 คลาส รวมราแป้ง)'}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={compareState.engine === 'claude' && compareState.status === 'success' ? 'secondary' : 'ghost'}
-                        disabled={compareState.status === 'loading'}
-                        onClick={() => void runCompare('claude')}
-                      >
-                        <Icon name="psychology" size={16} />
-                        {compareState.status === 'loading' && compareState.engine === 'claude'
-                          ? 'กำลังคิดด้วย Claude...'
-                          : 'สแกนเทียบด้วย Claude Vision'}
-                      </Button>
+                      {enginesList.filter((engine) => engine.name !== 'legacy4').map((engine) => (
+                        <Button
+                          key={engine.name}
+                          size="sm"
+                          variant={compareState.engine === engine.name && compareState.status === 'success' ? 'secondary' : 'ghost'}
+                          disabled={compareState.status === 'loading'}
+                          onClick={() => void runCompare(engine.name as VisionEngineName)}
+                        >
+                          <Icon name="search" size={16} />
+                          {compareState.status === 'loading' && compareState.engine === engine.name
+                            ? `กำลังประมวลผล ${engine.title_th}...`
+                            : `สแกนเทียบด้วย ${engine.title_th}${engine.costs_money ? ' (มีค่าใช้จ่าย)' : ''}`}
+                        </Button>
+                      ))}
                     </div>
 
                     {compareState.status === 'loading' && (

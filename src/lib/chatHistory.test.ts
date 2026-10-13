@@ -6,6 +6,7 @@ import {
   getLocalConversations,
   getLocalDiseaseHistory,
   getLocalMessages,
+  mergeServerAndLocalVisionMessages,
   historyScope,
   rememberConversationId,
   resetHistoryScope,
@@ -34,6 +35,41 @@ const message = (overrides: Partial<ApiMessage> = {}): ApiMessage => ({
 afterEach(() => {
   window.localStorage.clear();
   vi.restoreAllMocks();
+});
+
+describe('mergeServerAndLocalVisionMessages', () => {
+  it('keeps a local-only comparison with its photo in chronological order', () => {
+    const earlier = toFeedMessage(message({ id: 'server-before', createdAt: '2026-10-05T03:15:00.000Z' }));
+    const later = toFeedMessage(message({ id: 'server-after', createdAt: '2026-10-05T04:00:00.000Z' }));
+    const photo = {
+      id: 'local-photo',
+      role: 'user' as const,
+      time: '',
+      imageUrl: 'data:image/png;base64,example',
+      createdAt: '2026-10-05T03:30:00.000Z',
+    };
+    const observation = {
+      id: 'local-compare',
+      role: 'assistant' as const,
+      time: '',
+      createdAt: '2026-10-05T03:31:00.000Z',
+      visionCompare: {
+        success: true,
+        engine: 'wide9' as const,
+        prediction: { class_id: 'healthy' },
+        disclaimer: 'ข้อสังเกตเท่านั้น',
+      },
+    };
+
+    const merged = mergeServerAndLocalVisionMessages(
+      [earlier, later],
+      [photo, observation],
+    );
+    expect(merged.map((entry) => entry.id)).toEqual([
+      'server-before', 'local-photo', 'local-compare', 'server-after',
+    ]);
+    expect(mergeServerAndLocalVisionMessages(merged, [photo, observation])).toHaveLength(4);
+  });
 });
 
 describe('restoreConversationId', () => {

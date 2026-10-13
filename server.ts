@@ -1,10 +1,17 @@
 import express from "express";
-import { GoogleGenAI } from "@google/genai";
+import { createGoogle } from "@ai-sdk/google";
+import { generateText } from "ai";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import { persistentDb, CloudStorageService, MAX_SIGNED_URL_TTL_SEC } from "./server-storage";
 import { chatModelPolicy } from "./server-cost-policy";
+import { buildChatMessages, capabilityOverviewReply, CHAT_INSTRUCTIONS, cultivarBoundaryReply, measurementBoundaryReply, measuredBrixReply, safeClientChatHistory, weeklyCareReply } from "./server-chat-context";
+import { localChatModelName, localChatProvider, localChatStatus } from "./server-chat-provider";
+import { isAgronomyQuestion, knowledgeInstructions, knowledgeSources, retrieveKnowledge } from "./server-knowledge";
+import { linkedKnockError, validMeasuredBrix } from "./server-acoustic-training";
+import { consentForAccount, sessionMatchesAccount, validateConsentPatch, validateProfilePatch } from "./server-account-settings";
+import { FirebaseKeysUnavailableError, verifyFirebaseGoogleIdToken } from "./server-firebase-auth";
 import {
   HistoryStore,
   disabledStore,
@@ -300,6 +307,10 @@ function resolveIdentity(req: express.Request): Identity {
   if (typeof header === "string" && header.startsWith("Bearer ")) {
     const payload = verifyJwt(header.slice(7).trim());
     if (payload) {
+      const account = db.users?.find((entry: any) => entry.id === payload.sub);
+      if (!account || !sessionMatchesAccount(payload.sv, account.sessionVersion)) {
+        return { sub: GUEST_USER_ID, role: "guest", isGuest: true };
+      }
       return {
         sub: payload.sub,
         role: typeof payload.role === "string" && payload.role ? payload.role : "user",
@@ -398,7 +409,8 @@ const db = persistentDb.getDb();
 // message: keys get added ahead of time, copied from another project, or left
 // behind by whoever provisioned the box. The vision service already required
 // VISION_ENABLE_CLAUDE for the same reason; this gives the Node API the same
-// rule. Without the opt-in the expert rule system answers, which is free.
+// rule. Without the opt-in, text chat reports that no model is available;
+// a rule-generated answer cannot be presented as a real AI response.
 /**
  * ที่เก็บประวัติการสนทนา
  *
@@ -426,9 +438,10 @@ if (historyPolicy.backend === "firestore") {
 }
 
 const chatCostPolicy = chatModelPolicy();
-let aiClient: GoogleGenAI | null = null;
+let chatGoogle: ReturnType<typeof createGoogle> | null = null;
+const chatModelName = (process.env.GEMINI_CHAT_MODEL ?? "gemini-2.5-flash").trim();
 if (chatCostPolicy.enabled) {
-  aiClient = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY ?? "").trim() });
+  chatGoogle = createGoogle({ apiKey: (process.env.GEMINI_API_KEY ?? "").trim() });
 } else if (chatCostPolicy.reason) {
   console.log(`[chat] ไม่เรียกโมเดลที่เสียเงิน: ${chatCostPolicy.reason}`);
 }
@@ -448,71 +461,9 @@ function checkServerRate(key: string, limit: number, windowMs: number): boolean 
 // Core API Endpoints
 // -------------------------------------------------------------
 
-const VARIETIES_DATA = [
-  {
-    id: "var-1",
-    name: "พันธุ์กินรี (Khinri)",
-    minRipeHz: 125,
-    maxRipeHz: 146,
-    targetBrix: 12.2,
-    unripeThresholdHz: 162,
-    overripeThresholdHz: 110,
-    description: "แตงยอดนิยม เนื้อทรายแน่นหวานฉ่ำ เรโซแนนซ์ชัดเจนย่าน 134 Hz",
-    shape: "กลมรี",
-    rindType: "ลายเขียวเข้มสลับอ่อน",
-  },
-  {
-    id: "var-2",
-    name: "พันธุ์ซอนญ่า (Sonya)",
-    minRipeHz: 120,
-    maxRipeHz: 142,
-    targetBrix: 12.8,
-    unripeThresholdHz: 158,
-    overripeThresholdHz: 108,
-    description: "เนื้อละเอียดสีแดงเข้ม หวานกรอบ ความถี่เรโซแนนซ์ 130 Hz",
-    shape: "กลม",
-    rindType: "ผิวเขียวเข้มเกือบดำ",
-  },
-  {
-    id: "var-3",
-    name: "พันธุ์ตอร์ปิโด (Torpedo)",
-    minRipeHz: 130,
-    maxRipeHz: 152,
-    targetBrix: 11.8,
-    unripeThresholdHz: 168,
-    overripeThresholdHz: 114,
-    description: "ผลทรงรี เปลือกหนาปานกลาง ความถี่สูงกว่าทรงกลมเล็กน้อย 138 Hz",
-    shape: "ยาวรี (ตอร์ปิโด)",
-    rindType: "ลายริ้วเขียวขจี",
-  },
-  {
-    id: "var-4",
-    name: "พันธุ์ไดอาน่า (Diana)",
-    minRipeHz: 132,
-    maxRipeHz: 155,
-    targetBrix: 11.5,
-    unripeThresholdHz: 170,
-    overripeThresholdHz: 115,
-    description: "เปลือกสีทองเนื้อแดง เรโซแนนซ์เปลือกสะท้อนเร็ว 140 Hz",
-    shape: "กลมรี",
-    rindType: "เปลือกเหลืองทอง",
-  },
-  {
-    id: "var-5",
-    name: "พันธุ์ไร้เมล็ด (Seedless)",
-    minRipeHz: 118,
-    maxRipeHz: 138,
-    targetBrix: 12.4,
-    unripeThresholdHz: 154,
-    overripeThresholdHz: 105,
-    description: "เนื้อแน่นไม่มีเมล็ด คลื่นดูดซับสูง เสียงทุ้มก้องกว่าปกติ 128 Hz",
-    shape: "กลม",
-    rindType: "เขียวเข้มลายพราง",
-  },
-];
-
 // 0. GET /api/v1/health
-app.get("/api/v1/health", (req, res) => {
+app.get("/api/v1/health", async (_req, res) => {
+  const localChat = await localChatStatus();
   res.json({
     status: "ok",
     service: "Watermelon AI API",
@@ -526,26 +477,34 @@ app.get("/api/v1/health", (req, res) => {
       reason: historyStore.degradedReason || historyPolicy.reason,
     },
     chatModel: {
+      localModel: localChat.model,
+      localAvailable: localChat.ready,
+      activeProvider: localChat.ready ? "ollama" : chatCostPolicy.enabled ? "gemini" : null,
       paidModelEnabled: chatCostPolicy.enabled,
-      reason: chatCostPolicy.reason,
+      reason: localChat.ready ? localChat.reason : `${localChat.reason}; ${chatCostPolicy.reason}`,
     },
   });
 });
 
 // GET /api/v1/varieties
 app.get("/api/v1/varieties", (req, res) => {
-  res.json(VARIETIES_DATA);
+  res.status(410).json({
+    error: "ยกเลิกเกณฑ์ความถี่และค่า Brix รายสายพันธุ์ที่ยังไม่มีผลวัดปรับเทียบรองรับ",
+    code: "CULTIVAR_CALIBRATION_UNAVAILABLE",
+  });
+});
+
+const socialLoginLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  message: "พยายามเข้าสู่ระบบผ่านผู้ให้บริการถี่เกินไป กรุณารอสักครู่",
 });
 
 // GET /api/v1/varieties/calibration
 app.get("/api/v1/varieties/calibration", (req, res) => {
-  res.json({
-    profiles: VARIETIES_DATA,
-    acousticFilter: {
-      bandpass: { lowCutHz: 80, highCutHz: 600 },
-      noiseGateThresholdDb: -42,
-      fftSize: 2048,
-    },
+  res.status(410).json({
+    error: "ยังไม่มีชุดข้อมูลเสียงเคาะและค่า Brix ที่วัดจากผลเดียวกันเพื่อสร้างเกณฑ์รายสายพันธุ์",
+    code: "CULTIVAR_CALIBRATION_UNAVAILABLE",
   });
 });
 
@@ -633,10 +592,12 @@ app.post("/api/v1/conversations", async (req, res) => {
     chatMode: typeof mode === "string" ? mode : "general",
     messageCount: 0,
   };
-  db.conversations.unshift(newConv);
-  db.messages[newConv.id] = [];
-  persistentDb.save();
-  await persistHistory("สร้างห้องสนทนา", () => historyStore.saveConversation(newConv));
+  if (canPersistFor(identityOf(req))) {
+    db.conversations.unshift(newConv);
+    db.messages[newConv.id] = [];
+    persistentDb.save();
+    await persistHistory("สร้างห้องสนทนา", () => historyStore.saveConversation(newConv));
+  }
   res.json(newConv);
 });
 
@@ -696,171 +657,6 @@ app.delete("/api/v1/conversations/:id", async (req, res) => {
 });
 
 /**
- * Intelligent Watermelon Agricultural Expert Knowledge System
- * Provides deep, accurate, structured guidance with PHI values and safe recommendations.
- */
-function generateWatermelonAIExpertResponse(content: string, mode: string): string {
-  const query = (content || "").toLowerCase().trim();
-
-  // There is deliberately no knock branch here. It used to report a maturity
-  // class, a resonance frequency and a Brix figure that were either hard-coded
-  // defaults or Math.random() output, which a farmer reads as a measurement.
-  // knock-analysis mode now returns 503 before reaching this function.
-
-  if (mode === "transcription") {
-    if (!content) {
-      return "ยังไม่ได้รับข้อความที่ถอดจากเสียงครับ กรุณาลองอัดเสียงและส่งมาอีกครั้ง 🍉";
-    }
-    return `ถอดข้อความเสียงเรียบร้อยแล้วครับ: "${content}" 🍉`;
-  }
-
-  if (mode === "transcription") {
-    return `ถอดข้อความเสียงเรียบร้อยแล้วครับ: "${content || "ช่วยฟังเสียงเคาะแตงโมลูกนี้หน่อย พันธุ์กินรีหนักสี่กิโลกรัม"}" 🍉`;
-  }
-
-  // 1. Diseases & Symptoms (โรคและอาการผิดปกติ)
-  if (query.includes("ราน้ำค้าง") || query.includes("downy")) {
-    return `🌿 **โรคราน้ำค้างแตงโม (Downy Mildew) — คำแนะนำจากน้องแตงโม AI** 🍉
-
-- **สาเหตุ:** เชื้อรา *Pseudoperonospora cubensis* มักระบาดรุนแรงช่วงฤดูฝน อากาศชื้นสูง หรือหมอกลงจัด
-- **อาการสังเกต:** บนผิวใบมีแผลสีเหลืองเป็นเหลี่ยมตามแนวเส้นใบ ใต้ใบพบคราบสปอร์เส้นใยสีเทาหรือสีม่วง หากระบาดรุนแรงใบจะแห้งกรอบม้วนขึ้นและต้นโทรม
-- **แนวทางจัดการ:**
-  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **ไดเมโทมอร์ฟ (Dimethomorph)** หรือ **แมนโคเซบ (Mancozeb)** หรือ ไซมอกซานิล
-  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ควรงดพ่นสารอย่างน้อย **7 วัน** ก่อนเก็บเกี่ยว
-  3. **ชีววิธี/เขตกรรม:** ตัดแต่งใบส่วนล่างที่มีแผลนำไปเผาทำลายนอกแปลง และปรับระบบน้ำไม่ให้ใบแฉะข้ามคืนครับ`;
-  }
-
-  if (query.includes("แอนแทรคโนส") || query.includes("anthracnose") || query.includes("ใบจุด") || query.includes("จุดดำ") || query.includes("แผลดำ")) {
-    return `🌿 **โรคแอนแทรคโนสแตงโม (Anthracnose) — คำแนะนำจากน้องแตงโม AI** 🍉
-
-- **สาเหตุ:** เชื้อรา *Colletotrichum orbiculare*
-- **อาการสังเกต:** จุดแผลสีน้ำตาลกลม บนใบมีวงซ้อนกัน ขอบแผลเข้ม หากเป็นที่ผลจะมีแผลยุบตัวเป็นหลุมบุ๋มสีดำและมีเมือกสีส้ม
-- **แนวทางจัดการ:**
-  1. **สารเคมีป้องกันกำจัด:** พ่นด้วย **อะซ็อกซีสโตรบิน (Azoxystrobin)** กลุ่ม FRAC 11 สลับกับ **ไดฟีโนโคนาโซล (Difenoconazole)** กลุ่ม FRAC 3 เพื่อป้องกันเชื้อดื้อยา
-  2. **ระยะปลอดภัยก่อนเก็บเกี่ยว (PHI):** ต้องเว้นระยะเก็บเกี่ยว **3–7 วัน**
-  3. **ข้อควรระวัง:** ห้ามเก็บเกี่ยวผลผลิตขณะผลแฉะน้ำ และแยกผลที่เป็นแผลออกจากกองผลผลิตทันทีครับ`;
-  }
-
-  if (query.includes("ใบด่าง") || query.includes("ไวรัส") || query.includes("ใบหงิก") || query.includes("ยอดหด") || query.includes("ยอดกุด")) {
-    return `🌿 **โรคไวรัสใบด่างแตงโม (Watermelon Mosaic Virus - WMV) & อาการยอดหงิก** 🍉
-
-- **สาเหตุ:** เชื้อไวรัส มีแมลงพาหะสำคัญคือ **เพลี้ยไฟ** และ **เพลี้ยอ่อน**
-- **อาการสังเกต:** ใบมีแถบสีเขียวเข้มสลับเขียวอ่อน ผิวใบตะปุ่มตะป่ำ ยอดหงิกงอชะงักการเจริญเติบโต ผลบิดเบี้ยว
-- **แนวทางจัดการ:**
-  1. โรคไวรัสไม่มียารักษาโดยตรง **ต้องถอนต้นที่เป็นโรคใส่ถุงดำนำไปทำลายนอกแปลงทันที** เพื่อไม่ให้เป็นแหล่งแพร่ระบาด
-  2. **คุมแมลงพาหะ:** พ่นสารกำจัดเพลี้ยไฟ เช่น **สไปนีโทแรม (Spinetoram)** หรือ **ไดโนทีฟูแรน (Dinotefuran)** (PHI 7 วัน)
-  3. ฉีดพ่นเชื้อราบิวเวอเรีย หรือใช้น้ำมันปิโตรเลียมสเปรย์ออยล์คุมไข่แมลง`;
-  }
-
-  if (query.includes("ใบเหลือง") || query.includes("ใบไหม้") || query.includes("ใบแห้ง")) {
-    return `🍂 **วิเคราะห์สาเหตุอาการใบเหลืองในแตงโม — น้องแตงโม AI** 🍉
-
-อาการใบเหลืองเกิดได้จาก 3 สาเหตุหลักครับ:
-1. **โรคราน้ำค้าง (พบบ่อยที่สุด):** สังเกตแผลเหลี่ยมสีเหลือง มีผงสปอร์สีเทาใต้ใบช่วงเช้าตรู่
-2. **ขาดธาตุไนโตรเจน (N) หรือ แมกนีเซียม (Mg):** ใบแก่ด้านล่างจะเริ่มเหลืองสม่ำเสมอก่อน ยอดด้านบนยังเขียวอยู่ (แก้ด้วยการให้ปุ๋ยไนโตรเจนทางราก และฉีดพ่นแมกนีเซียมทางใบ)
-3. **รากเน่า/น้ำขัง:** ดินแฉะเกินไป รากขาดอากาศหายใจ ใบจะเหลืองทั้งต้นและสลดเหี่ยวตอนแดดจัด
-
-💡 **วิธีตรวจสอบ:** พลิกดูใต้ใบเพื่อเช็กคราบเชื้อรา และถ่ายรูปใบส่งเข้ามาในแชทเพื่อให้ AI สแกนตรวจจับความแม่นยำสูงได้ทันทีครับ`;
-  }
-
-  if (query.includes("เพลี้ย") || query.includes("แมลง") || query.includes("หนอน") || query.includes("ไรแดง")) {
-    return `🐛 **การจัดการแมลงศัตรูแตงโม — คำแนะนำจากน้องแตงโม AI** 🍉
-
-- **เพลี้ยไฟ (ยอดหงิก ใบม้วนงอขึ้น):**
-  - ใช้ **สไปนีโทแรม (Spinetoram 12% SC)** อัตรา 10-15 ซีซี/น้ำ 20 ลิตร หรือ ไดโนทีฟูแรน
-  - พ่นช่วงเช้าหรือเย็นเน้นบริเวณยอดและใต้ใบ (PHI 7 วัน)
-- **ไรแดงแตงโม (ใบมีจุดประสีบรอนซ์ขาว):**
-  - ใช้ **โพรพาร์ไกต์ (Propargite)** หรือ เฮกซีไทอะซ็อกซ์ (Hexythiazox) สลับกลุ่มสาร
-- **แมลงวันผลไม้ / แมลงวันแตง (หนอนเจาะผล):**
-  - ติดตั้งกับดักกาวเหนียวและฟีโรโมนเมธิลยูจีนอลรอบแปลง
-  - ฉีดพ่นโปรตีนเหยื่อพิษห่างจากแนวแปลง 5-10 เมตรครับ`;
-  }
-
-  // 2. Fertilizer & Nutrition (ปุ๋ยและธาตุอาหาร)
-  if (query.includes("ปุ๋ย") || query.includes("ฮอร์โมน") || query.includes("บำรุง") || query.includes("ขยายผล") || query.includes("ความหวาน") || query.includes("หวาน")) {
-    return `🌱 **โปรแกรมการใส่ปุ๋ยแตงโมตามระยะการเจริญเติบโต (สูตรแม่นยำ)** 🍉
-
-1. **ระยะรองพื้น (ก่อนปลูก):**
-   - ปุ๋ยคอก/ปุ๋ยหมัก 1,000–2,000 กก./ไร่ + ปุ๋ยเคมีสูตร **15-15-15** อัตรา 25 กก./ไร่
-2. **ระยะทอดยอด-แตกแขนง (15–20 วันหลังย้ายกล้า):**
-   - เน้นไนโตรเจนช่วยยืดเถา: **25-7-7** หรือ **46-0-0** ผสม **15-15-15** อัตรา 20–25 กก./ไร่
-3. **ระยะออกดอก-ติดผล (30–35 วัน):**
-   - ใส่ **15-15-15** ร่วมกับฉีดพ่น **แคลเซียม-โบรอน** ทางใบ เพื่อช่วยในการผสมเกสร ขั้วเหนียว ป้องกันผลแตกก้นเน่า
-4. **ระยะขยายขนาดผล (40–50 วัน):**
-   - เร่งขนาดและน้ำหนัก: ใส่สูตร **13-13-21** หรือ **14-7-35** อัตรา 25–30 กก./ไร่
-5. **ระยะสร้างน้ำตาลก่อนเก็บเกี่ยว (55–60 วัน):**
-   - เพิ่มความหวาน กรอบ: ใส่ **0-0-60** เล็กน้อยทางน้ำ งดปุ๋ยไนโตรเจน และ **งดน้ำ 5–7 วันก่อนเก็บเกี่ยว** จะได้ค่า Brix สูงถึง 12–13 °Brix ครับ`;
-  }
-
-  // 3. Cultivars (สายพันธุ์แตงโม)
-  if (query.includes("พันธุ์") || query.includes("ตอร์ปิโด") || query.includes("กินรี") || query.includes("ซอนญ่า") || query.includes("ไดอาน่า") || query.includes("ไร้เมล็ด")) {
-    return `🍉 **คู่มือลักษณะสายพันธุ์แตงโมยอดนิยมในไทย**
-
-- **กินรี (Kinnaree):**
-  - ผลทรงกลมรี ผิวลายเขียวเข้มสลับอ่อน เนื้อแดงละเอียด เมล็ดน้อย
-  - อายุเก็บเกี่ยว: **60–65 วัน** | ค่าความหวานเฉลี่ย: **11–12 °Brix** | น้ำหนักผล 4–6 กก.
-- **ตอร์ปิโด (Torpedo):**
-  - ทรงกระบอกยาวรี เปลือกบางแต่เหนียว ทนการขนส่งระยะไกล เนื้อแน่นกรอบ
-  - อายุเก็บเกี่ยว: **65–70 วัน** | ค่าความหวานเฉลี่ย: **12–13 °Brix** | น้ำหนักผล 5–8 กก.
-- **ซอนญ่า (Sonya):**
-  - ผลกลม ลายตอร์ปิโด เนื้อแดงสด ไส้ตันแน่น กรอบ ไม่ล้มง่าย
-  - อายุเก็บเกี่ยว: **60–65 วัน** | ความหวาน: **12 °Brix**
-- **ไดอาน่า (Diana) / แตงโมเปลือกเหลือง:**
-  - เปลือกสีเหลืองทอง เนื้อสีแดงสด ตลาดพรีเมียมราคาดี
-  - อายุเก็บเกี่ยว: **65 วัน** | ค่าความหวาน: **12–13 °Brix**
-- **แตงโมไร้เมล็ด (Seedless):**
-  - พันธุ์ตรีพลอยด์ ผลกลมรี เนื้อแน่นกรอบ ราคาสูง ต้องปลูกร่วมกับแตงโมพันธุ์ธรรมดา 20% เพื่อช่วยผสมเกสรครับ`;
-  }
-
-  // 4. Watering & Irrigation (การให้น้ำ)
-  if (query.includes("น้ำ") || query.includes("รดน้ำ") || query.includes("น้ำหยด") || query.includes("แฉะ")) {
-    return `💧 **เทคนิคการให้น้ำแตงโมให้ได้ผลผลิตเกรด A** 🍉
-
-1. **ระยะต้นกล้าถึงแตกเถา (1–25 วัน):** ให้น้ำสม่ำเสมอทุกวันช่วงเช้า ดินชื้นพอดี ไม่แฉะขัง
-2. **ระยะออกดอกผสมเกสร (30–35 วัน):** **ลดปริมาณน้ำลงเล็กน้อย** เพื่อให้เกสรติดง่าย ดอกไม่ร่วง
-3. **ระยะขยายผล (38–50 วัน):** ช่วงนี้แตงโมต้องการน้ำมากที่สุด ให้น้ำวันละ 1-2 ครั้ง ดินห้ามแห้งเด็ดขาดเพราะจะทำให้ผลชะงัก
-4. **ระยะก่อนเก็บเกี่ยว (55 วันขึ้นไป):** **ต้องลดและงดน้ำ 5–7 วันก่อนตัดผล** เพื่อให้ความหวานเข้มข้น เนื้อแน่น ไม่ฉ่ำน้ำจนไส้ล้มหรือผลแตกครับ`;
-  }
-
-  // 5. Ripeness & Acoustic Analysis (การดูแตงโมสุก / เสียงเคาะ)
-  if (query.includes("เคาะ") || query.includes("สุก") || query.includes("ดูยังไง") || query.includes("แก่")) {
-    return `🍉 **3 วิธีดูแตงโมแก่สุกพร้อมตัดขาย / รับประทาน**
-
-1. **เสียงเคาะ (Acoustic Resonance):**
-   - **เสียงตึง กังวานโปร่ง (120–150 Hz):** สุกพอดี เนื้อแน่น หวานฉ่ำ (ใช้ฟีเจอร์อัดเสียงในแอปวัดได้เลย)
-   - **เสียงแปะๆ ทึบตัน (< 110 Hz):** สุกงอมเกินไป อาจเริ่มไส้ล้มหรือเละ
-   - **เสียงป๊อกๆ แน่นแข็ง (> 160 Hz):** ยังอ่อน เนื้อยังไม่เข้าสี
-2. **รอยแต้มดิน (Ground Spot):**
-   - จุดที่ผลแตงแตะพื้นดิน ควรเปลี่ยนจากสีขาวเป็น **สีเหลืองนวลหรือเหลืองครีมเข้ม**
-3. **มือเกาะ (Tendril) และขั้วผล:**
-   - หนวดหรือมือเกาะข้อเดียวกับขั้วผลแตง **แห้งเป็นสีน้ำตาลไหม้เกิน 2 ใน 3** แสดงว่าแก่จัดพร้อมเก็บเกี่ยวครับ`;
-  }
-
-  // 6. Pricing & Market (ราคาตลาด)
-  if (query.includes("ราคา") || query.includes("ตลาด") || query.includes("กิโล") || query.includes("ขาย")) {
-    return `📊 **สรุปสถานการณ์ราคาแตงโมวันนี้ (ราคากลางประเทศไทย)** 🍉
-
-- **ราคาหน้าสวน (คละเกรด):** ประมาณ **8.50 – 12.00 บาท/กก.**
-- **เกรด A (ผลสมบูรณ์ น้ำหนัก > 4 กก. ไร้ตำหนิ):** ประมาณ **14.00 – 18.00 บาท/กก.**
-- **ราคาตลาดขายส่ง (ตลาดไท / สี่มุมเมือง):** **16.00 – 22.00 บาท/กก.**
-- **แตงโมพรีเมียม (ไร้เมล็ด / เปลือกเหลือง):** **25.00 – 35.00 บาท/กก.**
-
-💡 สามารถดูราคาแยกตามตลาดและกราฟย้อนหลังได้ที่เมนู **"ราคาตลาดวันนี้"** ในแถบเมนูด้านข้างครับ`;
-  }
-
-  // General helpful watermelon assistant response
-  return `สวัสดีครับ! น้องแตงโม AI ยินดีช่วยเหลือเกษตรกรและผู้บริโภคทุกท่านครับ 🍉
-
-ผมสามารถช่วยคุณได้หลากหลายเรื่อง เช่น:
-1. 📸 **วิเคราะห์โรคพืช:** ถ่ายรูปใบแตงโมส่งเข้ามา เพื่อตรวจโรคราน้ำค้าง แอนแทรคโนส หรือไวรัสใบด่าง พร้อมคำแนะนำยาและค่า PHI
-2. 🎙️ **วัดความสุกจากเสียงเคาะ:** อัดเสียงเคาะผลแตงโมเพื่อประเมินความสุกและความหวาน Brix
-3. 🌱 **เทคนิคการปลูกและสูตรปุ๋ย:** สอบถามสูตรปุ๋ยตามระยะ การจัดการน้ำ หรือการเลือกสายพันธุ์ (กินรี, ตอร์ปิโด, ซอนญ่า)
-4. 📈 **เช็กราคาตลาด:** ตรวจสอบราคากลางผลผลิตแตงโม
-
-ต้องการให้น้องแตงโม AI ช่วยเหลือเรื่องใดเป็นพิเศษ พิมพ์ถามหรือส่งรูปภาพมาได้เลยครับ!`;
-}
-
-/**
  * Terms that mean "spray a chemical on a crop you are going to sell".
  * Advice containing one of these must state the pre-harvest interval.
  */
@@ -882,37 +678,29 @@ const CHEMICAL_HINTS = [
   "คาร์เบนดาซิม",
 ];
 
-/** Markers that a pre-harvest interval is already stated. */
-const PHI_HINTS = ["PHI", "ระยะปลอดภัย", "ก่อนเก็บเกี่ยว", "หยุดพ่น", "งดพ่น"];
-
-const PHI_FALLBACK_NOTE =
-  "\n\n⏱️ **ก่อนพ่นสารเคมีทุกครั้ง:** ต้องตรวจระยะปลอดภัยก่อนเก็บเกี่ยว (PHI) ของสารตัวนั้นจาก" +
-  "ฉลากข้างขวด แล้วหยุดพ่นให้ครบจำนวนวันก่อนเก็บผลขาย ข้อความนี้ยังไม่ได้ระบุค่า PHI ไว้ " +
-  "จึงยังไม่ควรใช้เป็นอัตราพ่นจริง — ดูค่า PHI รายโรคได้ที่หน้า \"โรคที่ตรวจได้\" " +
-  "หรือปรึกษาเจ้าหน้าที่เกษตรในพื้นที่ครับ\n\n" +
-  "ℹ️ AI เป็นเครื่องมือช่วยตัดสินใจ ไม่ใช่คำวินิจฉัยยืนยัน";
-
 /**
- * Appends the pre-harvest-interval caution when a reply recommends a
- * chemical without one. The catalogue-built replies in diseaseModel.ts
- * always include a PHI figure, but a Gemini answer is free text, so the
- * guarantee has to be enforced here rather than assumed.
+ * Free-form model text cannot establish a label-verified PHI for every
+ * chemical it names. Suppress such advice instead of adding a warning after it.
  */
 function ensurePhiDisclosure(reply: string): string {
   if (!reply) return reply;
   const mentionsChemical = CHEMICAL_HINTS.some((term) => reply.includes(term));
   if (!mentionsChemical) return reply;
-  const statesPhi = PHI_HINTS.some((term) => reply.includes(term));
-  if (statesPhi) return reply;
-  return reply + PHI_FALLBACK_NOTE;
+  // Free-form model text has no verified product label or per-chemical PHI.
+  // Appending a warning after a spray instruction still exposes unsafe advice.
+  return "คำตอบนี้มีคำแนะนำสารเคมีที่ยังตรวจสอบค่า PHI จากฉลากไม่ได้ ระบบจึงไม่แสดงคำแนะนำนั้น " +
+    "กรุณาดูข้อมูลที่ตรวจทานแล้วในคลังโรคหรือปรึกษาเจ้าหน้าที่เกษตรก่อนใช้สารครับ\n\n" +
+    "ℹ️ AI เป็นเครื่องมือช่วยตัดสินใจ ไม่ใช่คำวินิจฉัยยืนยัน";
 }
 
 // 4. POST /api/v1/conversations/:id/messages
 app.post("/api/v1/conversations/:id/messages", async (req, res) => {
   const { id } = req.params;
-  const { content, mode, attachment_ids = [], allow_training = false, imageBase64 } = req.body ?? {};
+  const { content, mode, attachment_ids = [], allow_training = false, imageBase64, history } = req.body ?? {};
   const now = new Date().toISOString();
-  const { sub: currentUserId, role: userRole } = identityOf(req);
+  const viewer = identityOf(req);
+  const { sub: currentUserId } = viewer;
+  const guest = !canPersistFor(viewer);
 
   if (content !== undefined && content !== null && typeof content !== "string") {
     return res.status(400).json({ error: "รูปแบบข้อความไม่ถูกต้อง" });
@@ -941,7 +729,7 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
     });
   }
 
-  let conv = db.conversations.find((c) => c.id === id);
+  let conv = guest ? undefined : db.conversations.find((c) => c.id === id);
   // Appending to another farmer's thread only needed its id: an outsider
   // could write into their history and rename the conversation.
   if (conv && !canAccessConversation(identityOf(req), conv)) {
@@ -959,8 +747,10 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
       chatMode: mode || "general",
       messageCount: 0,
     };
-    db.conversations.unshift(conv);
-    db.messages[id] = [];
+    if (!guest) {
+      db.conversations.unshift(conv);
+      db.messages[id] = [];
+    }
   } else {
     // ไม่มีการยึดแถวที่ไม่มีเจ้าของมาเป็นของผู้เรียกอีกต่อไป เพราะ canAccessConversation
     // กันแถวเหล่านั้นไว้ก่อนถึงบรรทัดนี้แล้ว การเขียน userId ทับคือการยกห้องของคนอื่นให้ผู้ที่ขอก่อน
@@ -968,7 +758,8 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
       conv.title = content.trim().slice(0, 24) + " 🍉";
     }
   }
-  if (!db.messages[id]) db.messages[id] = [];
+  if (!guest && !db.messages[id]) db.messages[id] = [];
+  const conversationMessages: BackendMessage[] = guest ? [] : db.messages[id];
 
   /**
    * Resolve the leaf photo for this turn. The caller may inline it as
@@ -1032,7 +823,7 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
 
     // Keep the photo so reloading the conversation shows what was analysed.
     // An inline `imageBase64` has no attachment row yet, so make one.
-    if (!userMessage.attachments.length) {
+    if (!guest && !userMessage.attachments.length) {
       try {
         const clean = photoBase64.replace(/^data:[^;]+;base64,/, "");
         const saved = await CloudStorageService.saveFile("chat-leaf.jpg", Buffer.from(clean, "base64"));
@@ -1057,18 +848,17 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
       }
     }
 
-    db.messages[id].push(userMessage);
     const diagnosis = outcome.diagnosis;
     // The record belongs to whoever asked, so disease history can be scoped
     // to them. Every record was previously filed under "farm-01".
-    const record = recordDiagnosis(diagnosis, currentUserId, content || "ส่งภาพผ่านแชท");
+    const record = guest ? null : recordDiagnosis(diagnosis, currentUserId, content || "ส่งภาพผ่านแชท");
     const visionReply: BackendMessage = {
       id: newId("msg"),
       conversationId: id,
       role: "assistant",
       content: diagnosisToChatReply(diagnosis),
       attachments: [],
-      diseaseDetection: { ...diagnosis, recordId: record.id, detectedAt: record.detectedAt },
+      diseaseDetection: { ...diagnosis, ...(record ? { recordId: record.id, detectedAt: record.detectedAt } : {}) },
       createdAt: new Date().toISOString(),
       status: "completed",
       modelVersion: diagnosis.model_version,
@@ -1078,13 +868,15 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
     conv.lastMessage = diagnosis.thai_name;
     conv.updatedAt = visionReply.createdAt;
     conv.messageCount += 2;
-    db.messages[id].push(visionReply);
-    persistentDb.save();
-    await persistHistory("บันทึกผลตรวจในแชท", async () => {
-      await historyStore.saveMessages(id, [userMessage, visionReply]);
-      await historyStore.saveConversation(conv!);
-    });
-    persistentDb.logAudit("CHAT_VISION", id, `${diagnosis.status}: ${diagnosis.thai_name}`);
+    if (!guest) {
+      conversationMessages.push(userMessage, visionReply);
+      persistentDb.save();
+      await persistHistory("บันทึกผลตรวจในแชท", async () => {
+        await historyStore.saveMessages(id, [userMessage, visionReply]);
+        await historyStore.saveConversation(conv!);
+      });
+      persistentDb.logAudit("CHAT_VISION", id, `${diagnosis.status}: ${diagnosis.thai_name}`);
+    }
     return res.json(visionReply);
   }
 
@@ -1107,48 +899,80 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
     conv.lastMessage = "รอภาพใบแตงโมจากผู้ใช้";
     conv.updatedAt = now;
     conv.messageCount += 2;
-    db.messages[id].push(userMessage);
-    db.messages[id].push(reply);
-    persistentDb.save();
-    await persistHistory("บันทึกข้อความแชท", async () => {
-      await historyStore.saveMessages(id, [userMessage, reply]);
-      await historyStore.saveConversation(conv!);
-    });
+    if (!guest) {
+      conversationMessages.push(userMessage, reply);
+      persistentDb.save();
+      await persistHistory("บันทึกข้อความแชท", async () => {
+        await historyStore.saveMessages(id, [userMessage, reply]);
+        await historyStore.saveConversation(conv!);
+      });
+    }
     return res.json(reply);
   }
 
 
-  // Determine reply content: using Gemini AI if configured, otherwise intelligent expert system
-  let replyText = "";
-  let usedGemini = false;
-  if (aiClient) {
+  // Text chat requires an actual configured model. The old rule fallback
+  // contained fabricated live prices, acoustic thresholds and chemical advice.
+  if (!content?.trim()) {
+    return res.status(422).json({ error: "กรุณาพิมพ์คำถามก่อนส่ง", code: "CHAT_EMPTY_MESSAGE" });
+  }
+  if (!checkServerRate(`chat:${clientIpOf(req)}:${currentUserId}`, 20, 60_000)) {
+    return res.status(429).json({ error: "ส่งข้อความถี่เกินไป กรุณารอสักครู่", code: "CHAT_RATE_LIMITED" });
+  }
+  const localChat = await localChatStatus();
+  const useLocalModel = localChat.ready;
+  if (!useLocalModel && !chatGoogle) {
+    return res.status(503).json({
+      error: `โมเดล AI สำหรับแชทยังไม่พร้อม: ${localChat.reason}`,
+      code: "CHAT_MODEL_DISABLED",
+      retryable: true,
+    });
+  }
+  const activeChatModel = useLocalModel ? localChatModelName : chatModelName;
+  const chatHistory = guest ? safeClientChatHistory(history) : conversationMessages;
+  const safetyReply = capabilityOverviewReply(content) ?? measurementBoundaryReply(content) ?? measuredBrixReply(content) ?? cultivarBoundaryReply(content, chatHistory) ?? weeklyCareReply(content);
+  const evidence = safetyReply ? [] : retrieveKnowledge(content);
+  const lacksEvidence = !safetyReply && isAgronomyQuestion(content) && evidence.length === 0;
+  let replyText = safetyReply ?? (lacksEvidence
+    ? "ยังไม่มีข้อมูลอ้างอิงที่ตรวจทานสำหรับคำถามนี้ จึงไม่ควรเดาคำแนะนำเฉพาะแปลงครับ บอกชนิดพืช อาการหรือระยะที่เห็นจริง ประวัติน้ำ/ปุ๋ย และส่งภาพที่ชัดได้ แล้วผมจะช่วยแยกสิ่งที่ควรตรวจต่อ\n\nℹ️ AI เป็นเครื่องมือช่วยตัดสินใจ ไม่ใช่คำวินิจฉัยยืนยัน"
+    : "");
+  if (!replyText) {
     try {
-      const prompt = `คุณคือ "น้องแตงโม AI" ผู้เชี่ยวชาญด้านสรีรวิทยาและการวิเคราะห์ความสุกของแตงโมไทย จากเสียงเคาะ (Acoustic Resonance), ภาพถ่ายรอยแต้มดิน, ขั้วแตงโม, และสายพันธุ์ (กินรี, ตอร์ปิโด, ซอนญ่า, ไดอาน่า, ไร้เมล็ด)
-คำถามของผู้ใช้: "${content}"
-โหมด: ${mode}
-กฎที่ต้องทำตามเสมอ: ถ้าแนะนำสารเคมีหรือการพ่นสาร ต้องระบุระยะปลอดภัยก่อนเก็บเกี่ยว (PHI) เป็นจำนวนวันทุกครั้ง
-และต้องบอกว่า AI เป็นเครื่องมือช่วยตัดสินใจ ไม่ใช่คำวินิจฉัยยืนยัน
-โปรดตอบเป็นภาษาไทยอย่างสุภาพ กระชับ อบอุ่น และให้เกร็ดความรู้ที่เป็นประโยชน์เกี่ยวกับแตงโม:`;
-
-      const response = await aiClient.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
+      const result = await generateText({
+        model: useLocalModel ? localChatProvider.chatModel(localChatModelName) : chatGoogle!(chatModelName),
+        instructions: `${CHAT_INSTRUCTIONS}\n\n${knowledgeInstructions(evidence)}`,
+        messages: buildChatMessages(chatHistory, content),
+        maxOutputTokens: 1000,
+        temperature: 0.4,
+        // Qwen3.5 defaults to thinking. Chat needs a prompt final answer.
+        ...(useLocalModel ? { providerOptions: { ollama: { reasoningEffort: "none" } } } : {}),
       });
-      replyText = response.text || "";
-      usedGemini = Boolean(replyText);
+      replyText = result.text;
     } catch (err) {
-      console.warn("Gemini call error fallback:", err);
+      console.error(`${useLocalModel ? "Ollama" : "Gemini"} call failed:`, err);
+      return res.status(503).json({
+        error: "เรียกโมเดล AI สำหรับแชทไม่สำเร็จ จึงยังไม่มีคำตอบ",
+        code: "CHAT_MODEL_UNAVAILABLE",
+        retryable: true,
+      });
     }
   }
 
   if (!replyText) {
-    replyText = generateWatermelonAIExpertResponse(content, mode);
+    return res.status(502).json({
+      error: "โมเดล AI ไม่ส่งคำตอบกลับมา",
+      code: "CHAT_EMPTY_RESPONSE",
+      retryable: true,
+    });
   }
 
   // A language model will happily name a fungicide without its pre-harvest
   // interval. The catalogue-driven replies always carry one; a generated
   // one is checked and gets the caution appended if it does not.
-  replyText = ensurePhiDisclosure(replyText);
+  const checkedReply = ensurePhiDisclosure(replyText);
+  replyText = checkedReply === replyText && !safetyReply
+    ? checkedReply + knowledgeSources(evidence)
+    : checkedReply;
 
   const assistantMessage: BackendMessage = {
     id: newId("msg"),
@@ -1160,22 +984,23 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
     status: "completed",
     // The reply came from whichever engine actually produced it, not from
     // an acoustic model that was never involved in a text answer.
-    modelVersion: usedGemini ? "gemini-2.5-flash" : "watermelon-expert-rules",
+    modelVersion: safetyReply ? "measurement-safety-rule" : lacksEvidence ? "knowledge-boundary-rule" : activeChatModel,
   };
 
   conv.lastMessage = replyText.slice(0, 80) + (replyText.length > 80 ? "..." : "");
   conv.updatedAt = now;
   conv.messageCount += 2;
 
-  db.messages[id].push(userMessage);
-  db.messages[id].push(assistantMessage);
-  await persistHistory("บันทึกข้อความแชท", async () => {
-    await historyStore.saveMessages(id, [userMessage, assistantMessage]);
-    await historyStore.saveConversation(conv!);
-  });
+  if (!guest) {
+    conversationMessages.push(userMessage, assistantMessage);
+    await persistHistory("บันทึกข้อความแชท", async () => {
+      await historyStore.saveMessages(id, [userMessage, assistantMessage]);
+      await historyStore.saveConversation(conv!);
+    });
+  }
 
   // If user opted-in to training
-  if (allow_training === true) {
+  if (!guest && allow_training === true && db.consents[currentUserId]?.improveModel === true) {
     // Only what was actually collected is recorded. This used to store a
     // sweetnessBrix of 12.0 and a variety of "พันธุ์กินรี" for every text
     // chat, so invented measurements entered the training set.
@@ -1190,7 +1015,7 @@ app.post("/api/v1/conversations/:id/messages", async (req, res) => {
       createdAt: now.split("T")[0],
     });
   }
-  persistentDb.save();
+  if (!guest) persistentDb.save();
   res.json(assistantMessage);
 });
 
@@ -1261,16 +1086,54 @@ app.post("/api/v1/audio/transcriptions", (req, res) => {
 });
 
 // 7. POST /api/v1/audio/knock-analysis
-//
-// Same reasoning as the knock-analysis chat mode: there is no acoustic
-// model, and the fixed 134 Hz / 12.2 °Brix response was indistinguishable
-// from a real reading of the farmer's own fruit.
-app.post("/api/v1/audio/knock-analysis", (req, res) => {
-  res.status(503).json({
-    error:
-      "ระบบวิเคราะห์เสียงเคาะยังไม่พร้อมใช้งาน ระบบจะไม่เดาค่าความถี่หรือค่าความหวานให้ครับ",
-    code: "ACOUSTIC_SERVICE_UNAVAILABLE",
-  });
+// Measure the uploaded waveform with the Python FFT service. This is an
+// acoustic *measurement*, never a Brix or cultivar prediction.
+app.post("/api/v1/audio/knock-analysis", async (req, res) => {
+  const { pcmBase64, sampleRate, massKg } = req.body ?? {};
+  if (
+    typeof pcmBase64 !== "string" ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(pcmBase64) ||
+    pcmBase64.length % 4 !== 0 ||
+    pcmBase64.length > 8_000_000 ||
+    !Number.isInteger(sampleRate) ||
+    sampleRate < 8_000 ||
+    sampleRate > 96_000 ||
+    (massKg !== undefined && (typeof massKg !== "number" || !Number.isFinite(massKg) || massKg <= 0 || massKg > 30))
+  ) {
+    return res.status(422).json({
+      error: "ข้อมูลเสียงไม่ถูกต้อง ต้องส่ง PCM float32, sampleRate 8–96 kHz และน้ำหนัก 0–30 กก. หากมี",
+      code: "ACOUSTIC_INVALID_INPUT",
+    });
+  }
+  const pcmBytes = Buffer.byteLength(pcmBase64, "base64");
+  if (pcmBytes % 4 !== 0 || pcmBytes / 4 / sampleRate > 20) {
+    return res.status(422).json({
+      error: "เสียงต้องเป็น PCM float32 ยาวไม่เกิน 20 วินาที",
+      code: "ACOUSTIC_INVALID_INPUT",
+    });
+  }
+  try {
+    const upstream = await fetch(`${VISION_SERVICE_URL}/acoustic`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pcmBase64, sampleRate, ...(massKg === undefined ? {} : { massKg }) }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const body = await upstream.json().catch(() => ({}));
+    if (!upstream.ok) {
+      return res.status(upstream.status === 422 ? 422 : 502).json({
+        error: typeof body.detail === "string" ? body.detail : "วัดคลื่นเสียงไม่สำเร็จ กรุณาอัดใหม่",
+        code: upstream.status === 422 ? "ACOUSTIC_UNMEASURABLE" : "ACOUSTIC_SERVICE_ERROR",
+      });
+    }
+    return res.json(body);
+  } catch (error) {
+    return res.status(503).json({
+      error: "เชื่อมต่อระบบวัดคลื่นเสียงไม่ได้ กรุณาลองใหม่เมื่อบริการพร้อม",
+      code: "ACOUSTIC_SERVICE_UNAVAILABLE",
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
 });
 
 // 8. POST /api/v1/feedback/reports
@@ -1306,30 +1169,63 @@ app.get("/api/v1/knowledge", (req, res) => {
   res.json(db.knowledge);
 });
 
-// 12. PATCH /api/v1/users/me/consent
+// 12. Account settings and consent
 //
 // Every caller used to write to the literal key "me", so one farmer
 // turning off model training switched it off in the stored record for
 // everyone — and `forget-me`, which deletes `consents[userId]`, never
 // removed it.
+app.get("/api/v1/users/me/settings", requireUser, (req, res) => {
+  const { sub: currentUserId } = identityOf(req);
+  const user = db.users?.find((entry: any) => entry.id === currentUserId);
+  if (!user) return res.status(404).json({ error: "ไม่พบบัญชีผู้ใช้ในระบบ" });
+  res.json({
+    success: true,
+    user: publicUser(user),
+    consent: consentForAccount(db.consents[currentUserId]),
+    capabilities: {
+      passwordChange: Boolean(user.passwordHash),
+      avatarUpload: false,
+      twoFactor: false,
+      lineNotifications: false,
+    },
+  });
+});
+
+app.patch("/api/v1/users/me/profile", requireUser, (req, res) => {
+  const { sub: currentUserId } = identityOf(req);
+  const user = db.users?.find((entry: any) => entry.id === currentUserId);
+  if (!user) return res.status(404).json({ error: "ไม่พบบัญชีผู้ใช้ในระบบ" });
+  const checked = validateProfilePatch(req.body);
+  if (!checked.ok) return res.status(400).json({ error: checked.error });
+  Object.assign(user, checked.patch);
+  persistentDb.save();
+  persistentDb.logAudit("ACCOUNT_PROFILE_UPDATED", currentUserId, Object.keys(checked.patch).join(","));
+  res.json({ success: true, user: publicUser(user) });
+});
+
 app.patch("/api/v1/users/me/consent", requireUser, (req, res) => {
   const { sub: currentUserId } = identityOf(req);
-  const incoming = req.body ?? {};
-  if (typeof incoming !== "object" || Array.isArray(incoming)) {
-    return res.status(400).json({ error: "รูปแบบข้อมูลความยินยอมไม่ถูกต้อง" });
+  if (!db.users?.some((entry: any) => entry.id === currentUserId)) {
+    return res.status(404).json({ error: "ไม่พบบัญชีผู้ใช้ในระบบ" });
   }
-  // Only booleans; a consent flag set to a string would read as truthy.
-  const flags: Record<string, boolean> = {};
-  for (const [key, value] of Object.entries(incoming)) {
-    if (typeof value === "boolean") flags[key] = value;
-  }
+  const checked = validateConsentPatch(req.body);
+  if (!checked.ok) return res.status(400).json({ error: checked.error });
   db.consents[currentUserId] = {
-    ...db.consents[currentUserId],
-    ...flags,
+    ...consentForAccount(db.consents[currentUserId]),
+    ...checked.patch,
     updated_at: new Date().toISOString(),
   };
+  if (checked.patch.improveModel === false) {
+    db.trainingCandidates = db.trainingCandidates.map((candidate: any) =>
+      candidate.ownerId === currentUserId
+        ? { ...candidate, userConsentValid: false, anonymizationStatus: "purged" }
+        : candidate,
+    );
+  }
   persistentDb.save();
-  res.json({ success: true, consent: db.consents[currentUserId] });
+  persistentDb.logAudit("ACCOUNT_CONSENT_UPDATED", currentUserId, Object.keys(checked.patch).join(","));
+  res.json({ success: true, consent: consentForAccount(db.consents[currentUserId]) });
 });
 
 // 13. GET /api/v1/admin/statistics
@@ -1424,6 +1320,28 @@ function optionalNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function recordingError(attachmentId: string, ownerId: string): string | null {
+  const attachment = db.attachments?.[attachmentId];
+  const filePath = typeof attachment?.storedName === "string"
+    ? CloudStorageService.getFilePath(attachment.storedName)
+    : null;
+  let header: Buffer | null = null;
+  if (filePath) {
+    try {
+      const handle = fs.openSync(filePath, "r");
+      try {
+        header = Buffer.alloc(12);
+        if (fs.readSync(handle, header, 0, 12, 0) !== 12) header = null;
+      } finally {
+        fs.closeSync(handle);
+      }
+    } catch {
+      header = null;
+    }
+  }
+  return linkedKnockError(attachment, ownerId, header);
+}
+
 // 17. POST /api/v1/watermelons (Create Specimen)
 //
 // Missing fields used to be filled with 4.5 kg, 11.5 °Brix, 135 Hz and a
@@ -1440,6 +1358,17 @@ app.post("/api/v1/watermelons", requireUser, (req, res) => {
   if (typeof body.variety !== "string" || !body.variety.trim()) {
     return res.status(400).json({ error: "กรุณาระบุสายพันธุ์ (variety)" });
   }
+  const audioAttachmentId = body.audioAttachmentId;
+  if (audioAttachmentId !== undefined) {
+    if (typeof audioAttachmentId !== "string" || !audioAttachmentId.trim()) {
+      return res.status(400).json({ error: "audioAttachmentId ต้องเป็นรหัสไฟล์เสียงที่อัปโหลดแล้ว" });
+    }
+    const error = recordingError(audioAttachmentId, currentUserId);
+    if (error) return res.status(400).json({ error });
+    if (db.watermelons.some((w: any) => w.audioAttachmentId === audioAttachmentId)) {
+      return res.status(409).json({ error: "ไฟล์เสียงนี้ผูกกับผลแตงโมอีกลูกแล้ว" });
+    }
+  }
 
   const newSpecimen = {
     id: newId("wm"),
@@ -1449,6 +1378,7 @@ app.post("/api/v1/watermelons", requireUser, (req, res) => {
     origin: typeof body.origin === "string" && body.origin.trim() ? body.origin.trim() : null,
     harvestDate: typeof body.harvestDate === "string" ? body.harvestDate : new Date().toISOString().split("T")[0],
     weightKg,
+    audioAttachmentId: audioAttachmentId ?? null,
     soundCharacteristics: typeof body.soundCharacteristics === "string" ? body.soundCharacteristics : null,
     predictedStatus: typeof body.predictedStatus === "string" ? body.predictedStatus : null,
     predictedBrix: optionalNumber(body.predictedBrix),
@@ -1486,8 +1416,8 @@ app.post("/api/v1/watermelons/:id/ground-truth", requireUser, (req, res) => {
   }
 
   const actualBrix = optionalNumber(body.actualBrix);
-  if (actualBrix === null) {
-    return res.status(400).json({ error: "กรุณาระบุค่าความหวานที่วัดได้จริง (actualBrix)" });
+  if (!validMeasuredBrix(actualBrix)) {
+    return res.status(400).json({ error: "กรุณาระบุค่า actualBrix ที่วัดได้จริงในช่วง 0–30 °Brix" });
   }
   if (typeof body.actualMaturity !== "string" || !body.actualMaturity.trim()) {
     return res.status(400).json({ error: "กรุณาระบุผลการผ่าตรวจ (actualMaturity)" });
@@ -1496,10 +1426,10 @@ app.post("/api/v1/watermelons/:id/ground-truth", requireUser, (req, res) => {
     return res.status(400).json({ error: "กรุณาระบุชื่อผู้ตรวจสอบ (verifiedBy)" });
   }
   const ALLOWED_AGREEMENT = ["match", "mismatch", "partial"];
-  const agreementStatus = typeof body.agreementStatus === "string" ? body.agreementStatus : "";
-  if (!ALLOWED_AGREEMENT.includes(agreementStatus)) {
+  const agreementStatus = body.agreementStatus == null ? null : body.agreementStatus;
+  if (agreementStatus !== null && !ALLOWED_AGREEMENT.includes(agreementStatus)) {
     return res.status(400).json({
-      error: `กรุณาระบุผลเทียบกับที่ AI ทำนาย (agreementStatus) เป็น ${ALLOWED_AGREEMENT.join(" / ")}`,
+      error: `agreementStatus ต้องเป็น ${ALLOWED_AGREEMENT.join(" / ")} หรือเว้นไว้เมื่อไม่มีผลทำนาย`,
     });
   }
 
@@ -1519,13 +1449,22 @@ app.post("/api/v1/watermelons/:id/ground-truth", requireUser, (req, res) => {
   specimen.groundTruth = truth;
   specimen.status = "verified";
 
-  // Only enters the training set when the owner actually consented.
+  // Replacing a cut result must replace its old candidate too, even if consent
+  // was withdrawn since the first submission.
+  db.trainingCandidates = db.trainingCandidates.filter(
+    (candidate: any) => !(candidate.sourceType === "audio" && candidate.sourceId === id),
+  );
+  // A labelled fruit with no linked WAV is not a sound training example.
   const ownerConsent = db.consents[specimen.ownerId ?? currentUserId];
-  if (ownerConsent?.improveModel === true) {
+  const hasRecording = typeof specimen.audioAttachmentId === "string" &&
+    recordingError(specimen.audioAttachmentId, specimen.ownerId ?? currentUserId) === null;
+  const queuedForReview = ownerConsent?.improveModel === true && hasRecording;
+  if (queuedForReview) {
     db.trainingCandidates.unshift({
       id: newId("cand"),
       sourceType: "audio",
       sourceId: id,
+      audioAttachmentId: specimen.audioAttachmentId,
       ownerId: specimen.ownerId ?? currentUserId,
       userConsentValid: true,
       anonymizationStatus: "pending",
@@ -1538,7 +1477,16 @@ app.post("/api/v1/watermelons/:id/ground-truth", requireUser, (req, res) => {
   }
 
   persistentDb.save();
-  res.json({ success: true, watermelon: specimen, addedToTrainingSet: ownerConsent?.improveModel === true });
+  res.json({
+    success: true,
+    watermelon: specimen,
+    // Quality review and anonymization are still pending; nothing was trained yet.
+    addedToTrainingSet: false,
+    queuedForReview,
+    trainingNote: hasRecording
+      ? (ownerConsent?.improveModel === true ? "รอตรวจคุณภาพเสียงก่อนใช้ฝึกโมเดล" : "เจ้าของยังไม่ยินยอมใช้ข้อมูลฝึกโมเดล")
+      : "ไม่มีไฟล์เสียง WAV ของผลเดียวกัน จึงใช้เป็นข้อมูลฝึกโมเดลเสียงไม่ได้",
+  });
 });
 
 // 19. POST /api/v1/storage/upload (Upload audio knock recording or watermelon photo)
@@ -1562,7 +1510,8 @@ app.post("/api/v1/storage/upload", requireUser, async (req, res) => {
       buffer,
     );
     if (!db.attachments) db.attachments = {};
-    db.attachments[newId("att")] = {
+    const attachmentId = newId("att");
+    db.attachments[attachmentId] = {
       type: result.filename.match(/\.(jpe?g|png|webp)$/i) ? "image" : "audio",
       name: result.filename,
       storedName: result.filename,
@@ -1574,6 +1523,7 @@ app.post("/api/v1/storage/upload", requireUser, async (req, res) => {
     persistentDb.logAudit("STORAGE_UPLOAD", currentUserId, `Uploaded file: ${result.filename} (${result.size} bytes)`);
     res.json({
       success: true,
+      attachmentId,
       filename: result.filename,
       size: result.size,
       signedUrl: result.signedUrl,
@@ -1814,7 +1764,9 @@ async function runVisionDiagnosis(imageBase64: string, mode?: string): Promise<V
     const response = await fetch(`${VISION_SERVICE_URL}/predict-base64`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestedMode ? { imageBase64, mode: requestedMode } : { imageBase64 }),
+      // buildDetection contains legacy4-only class mappings and test metrics.
+      // Always select that engine even if the Python default changes.
+      body: JSON.stringify({ imageBase64, engine: "legacy4", ...(requestedMode ? { mode: requestedMode } : {}) }),
       signal: AbortSignal.timeout(VISION_TIMEOUT_MS),
     });
 
@@ -2077,25 +2029,25 @@ app.post("/api/v1/watermelon/vision-compare", async (req, res) => {
   }
 });
 
-/**
- * Whether the acoustic (knock) analysis is usable.
- *
- * Mirrors `/watermelon/disease-model` so a screen can disable its
- * microphone button up front instead of letting a farmer record ten
- * seconds of knocking and then fail on submit. There is no acoustic model
- * in this build, so this always reports offline — honestly, and in one
- * place, rather than each caller having to know.
- */
-app.get("/api/v1/watermelon/acoustic-model", (req, res) => {
-  res.status(503).json({
-    success: false,
-    online: false,
-    error: "ระบบวิเคราะห์เสียงเคาะยังไม่พร้อมใช้งาน",
-    detail:
-      "ยังไม่มีโมเดลวิเคราะห์คลื่นเสียงในระบบ ระบบจะไม่ประเมินความถี่หรือค่าความหวานจากเสียง " +
-      "ระหว่างนี้ใช้การตรวจโรคจากภาพใบ หรือสังเกตรอยแต้มดินและขั้วผลตามคู่มือการปลูกได้ครับ",
-    code: "ACOUSTIC_SERVICE_UNAVAILABLE",
-  });
+/** The FFT service can be online without a calibrated sweetness model. */
+app.get("/api/v1/watermelon/acoustic-model", async (_req, res) => {
+  try {
+    const upstream = await fetch(`${VISION_SERVICE_URL}/acoustic/info`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!upstream.ok) throw new Error(`acoustic service returned ${upstream.status}`);
+    const info = await upstream.json();
+    return res.json({ success: true, online: info.available === true, reportsBrix: false, info });
+  } catch (error) {
+    return res.status(503).json({
+      success: false,
+      online: false,
+      reportsBrix: false,
+      error: "ระบบวัดคลื่นเสียงยังไม่พร้อมใช้งาน",
+      detail: error instanceof Error ? error.message : String(error),
+      code: "ACOUSTIC_SERVICE_UNAVAILABLE",
+    });
+  }
 });
 
 /**
@@ -2228,11 +2180,18 @@ async function fileScanIntoConversation(
 }
 
 app.post("/api/v1/watermelon/disease-detect", async (req, res) => {
-  const { imageBase64, notes = "", mode, conversationId } = req.body ?? {};
+  const { imageBase64, notes = "", mode, conversationId, engine } = req.body ?? {};
   const viewer = identityOf(req);
   const currentUserId = viewer.sub;
   if (!imageBase64 || typeof imageBase64 !== "string") {
     return res.status(400).json({ error: "กรุณาแนบรูปภาพใบแตงโมที่ต้องการตรวจโรค" });
+  }
+  if (engine !== undefined && engine !== "legacy4") {
+    return res.status(422).json({
+      error: "เส้นทางวินิจฉัยหลักรองรับเฉพาะ legacy4; ใช้ vision-compare สำหรับเครื่องยนต์อื่น",
+      code: "VISION_ENGINE_NOT_DIAGNOSTIC",
+      retryable: false,
+    });
   }
 
   const outcome = await runVisionDiagnosis(imageBase64, typeof mode === "string" ? mode : undefined);
@@ -2275,7 +2234,7 @@ app.post("/api/v1/watermelon/disease-detect", async (req, res) => {
  * to return the stored object directly, which now holds `passwordHash`.
  */
 function publicUser(user: Record<string, any>) {
-  const { passwordHash, ...safe } = user;
+  const { passwordHash, sessionVersion, providerUid, ...safe } = user;
   return safe;
 }
 
@@ -2302,6 +2261,11 @@ function pruneOtpSessions() {
 }
 
 app.post("/api/v1/auth/otp/send", otpSendLimiter, (req, res) => {
+  // No SMS provider is wired up. A production success here used to claim a
+  // message was delivered when the code existed only in this process.
+  if (isProduction() || process.env.ENABLE_DEMO_OTP !== "true") {
+    return res.status(503).json({ error: "ยังไม่เปิดบริการส่ง OTP ทาง SMS กรุณาใช้ Google หรือรหัสผ่าน" });
+  }
   // `phone.length` on a non-string was `undefined`, and `undefined < 9` is
   // false, so a numeric phone sailed past this check and crashed later on
   // `phone.slice(-4)`.
@@ -2327,21 +2291,12 @@ app.post("/api/v1/auth/otp/send", otpSendLimiter, (req, res) => {
   persistentDb.save();
   persistentDb.logAudit("AUTH_OTP_REQUEST", phone, "Generated OTP session");
 
-  // Printing the code is a development aid; in production it would put a
-  // live credential into whatever collects stdout.
-  if (!isProduction()) {
-    console.log(`[AUTH OTP DEV] Phone: ${phone} | Code: ${otpCode} | Session: ${sessionToken}`);
-  }
-
   const responsePayload: { success: boolean; sessionToken: string; message: string; demoCode?: string } = {
     success: true,
     sessionToken,
-    message: `ส่งรหัส OTP 6 หลักไปยัง ${phone} เรียบร้อยแล้ว (รหัสมีอายุ 5 นาที)`,
+    message: `สร้างรหัส OTP โหมดทดสอบสำหรับ ${phone} แล้ว (ไม่ได้ส่ง SMS; รหัสมีอายุ 5 นาที)`,
+    demoCode: otpCode,
   };
-
-  if (!isProduction() || process.env.ENABLE_DEMO_OTP === "true") {
-    responsePayload.demoCode = otpCode;
-  }
 
   res.json(responsePayload);
 });
@@ -2410,49 +2365,58 @@ app.post("/api/v1/auth/otp/verify", otpVerifyLimiter, (req, res) => {
     sub: user.id,
     phone: user.phone,
     role: user.role,
+    sv: user.sessionVersion ?? 0,
   });
 
   res.json({ success: true, user: publicUser(user), token });
 });
 
-app.post("/api/v1/auth/social", (req, res) => {
-  // `role` is not read from the body here either.
-  const { provider, email, name, avatar } = req.body ?? {};
+app.post("/api/v1/auth/social", socialLoginLimiter, async (req, res) => {
+  const { provider, idToken } = req.body ?? {};
   if (provider !== "google" && provider !== "line") {
     return res.status(400).json({ error: "ผู้ให้บริการเข้าสู่ระบบไม่ถูกต้อง" });
   }
-  // Without an email there is nothing to match on, and the old fallback
-  // (`user_<timestamp>@…`) created a brand-new account on every attempt.
-  if (typeof email !== "string" || !email.includes("@")) {
-    return res.status(400).json({ error: "ไม่ได้รับอีเมลจากผู้ให้บริการ กรุณาลองเข้าสู่ระบบอีกครั้ง" });
+  if (provider === "line") {
+    return res.status(501).json({ error: "ยังไม่ได้เชื่อม LINE Login กับระบบ กรุณาใช้ Google หรือรหัสผ่าน" });
+  }
+  let verified;
+  try {
+    verified = await verifyFirebaseGoogleIdToken(idToken, process.env.FIREBASE_PROJECT_ID || "acoustic-fruit-ripeness");
+  } catch (error) {
+    const status = error instanceof FirebaseKeysUnavailableError ? 503 : 401;
+    return res.status(status).json({ error: error instanceof Error ? error.message : "ยืนยัน Google ไม่สำเร็จ" });
   }
   if (!db.users) db.users = [];
-  const normalisedEmail = email.trim().toLowerCase();
-  let user = db.users.find((u: any) => u.email && u.email.toLowerCase() === normalisedEmail);
+  let user = db.users.find((u: any) => u.provider === "google" && u.providerUid === verified.uid);
+  if (!user) {
+    // Link older Google records only after Firebase has proved ownership of
+    // this verified email. Never bind a different provider's account by email.
+    user = db.users.find((u: any) => u.provider === "google" && !u.providerUid &&
+      typeof u.email === "string" && u.email.toLowerCase() === verified.email);
+  }
   if (!user) {
     user = {
       id: newId("usr"),
-      name:
-        typeof name === "string" && name.trim()
-          ? name.trim()
-          : provider === "line"
-            ? "ผู้ใช้ LINE"
-            : "ผู้ใช้ Google",
-      email: normalisedEmail,
+      name: verified.name || "ผู้ใช้ Google",
+      email: verified.email,
       role: "user",
-      avatar: typeof avatar === "string" ? avatar : "🍉",
-      provider,
+      avatar: verified.avatar || "🍉",
+      provider: "google",
+      providerUid: verified.uid,
     };
     db.users.push(user);
+  } else if (!user.providerUid) {
+    user.providerUid = verified.uid;
   }
   persistentDb.save();
-  persistentDb.logAudit("AUTH_SOCIAL_LOGIN", user.id, `Social login via ${provider}`);
+  persistentDb.logAudit("AUTH_SOCIAL_LOGIN", user.id, "Verified Firebase Google login");
 
   // Issue real RFC 7519 HMAC-SHA256 Signed JWT
   const token = signJwt({
     sub: user.id,
     phone: user.phone,
     role: user.role,
+    sv: user.sessionVersion ?? 0,
   });
 
   res.json({ success: true, user: publicUser(user), token });
@@ -2522,6 +2486,7 @@ app.post("/api/v1/auth/login", loginLimiter, (req, res) => {
     sub: user.id,
     phone: user.phone,
     role: user.role,
+    sv: user.sessionVersion ?? 0,
   });
 
   res.json({ success: true, user: publicUser(user), token });
@@ -2535,10 +2500,8 @@ app.post("/api/v1/auth/register", (req, res) => {
   if (!cleanPhone) {
     return res.status(400).json({ error: "กรุณาระบุหมายเลขโทรศัพท์มือถือไทย 10 หลักที่ถูกต้อง" });
   }
-  if (password !== undefined && password !== null && password !== "") {
-    if (typeof password !== "string" || password.length < 8) {
-      return res.status(400).json({ error: "รหัสผ่านต้องมีความยาวอย่างน้อย 8 ตัวอักษร" });
-    }
+  if (typeof password !== "string" || password.length < 8 || password.length > 128) {
+    return res.status(400).json({ error: "กรุณาตั้งรหัสผ่าน 8–128 ตัวอักษร" });
   }
 
   if (!db.users) db.users = [];
@@ -2567,9 +2530,7 @@ app.post("/api/v1/auth/register", (req, res) => {
     cultivar: typeof cultivar === "string" && cultivar.trim() ? cultivar.trim() : undefined,
     plotSize: typeof plotSize === "string" && plotSize.trim() ? plotSize.trim() : undefined,
   };
-  if (typeof password === "string" && password) {
-    user.passwordHash = hashPassword(password);
-  }
+  user.passwordHash = hashPassword(password);
   db.users.push(user);
 
   persistentDb.save();
@@ -2579,6 +2540,7 @@ app.post("/api/v1/auth/register", (req, res) => {
     sub: String(user.id),
     phone: cleanPhone,
     role: "user",
+    sv: 0,
   });
 
   res.json({ success: true, user: publicUser(user), token });
@@ -2598,7 +2560,44 @@ app.get("/api/v1/auth/me", (req, res) => {
   if (!user) {
     return res.status(404).json({ error: "ไม่พบข้อมูลผู้ใช้งานในระบบ" });
   }
+  if (!sessionMatchesAccount(payload.sv, user.sessionVersion)) {
+    return res.status(401).json({ error: "เซสชันนี้ถูกยกเลิกแล้ว กรุณาเข้าสู่ระบบใหม่" });
+  }
   res.json({ success: true, user: publicUser(user), issuedAt: payload.iat, expiresAt: payload.exp });
+});
+
+const passwordChangeLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  message: "เปลี่ยนรหัสผ่านถี่เกินไป กรุณารอ 10 นาทีแล้วลองใหม่",
+});
+
+app.post("/api/v1/users/me/password", requireUser, passwordChangeLimiter, (req, res) => {
+  const { sub: currentUserId } = identityOf(req);
+  const user = db.users?.find((entry: any) => entry.id === currentUserId);
+  if (!user) return res.status(404).json({ error: "ไม่พบบัญชีผู้ใช้ในระบบ" });
+  if (!user.passwordHash) {
+    return res.status(409).json({
+      error: "บัญชีนี้ยังไม่มีรหัสผ่าน กรุณาใช้วิธีเข้าสู่ระบบเดิม การตั้งรหัสผ่านต้องมีขั้นตอนยืนยันตัวตนเพิ่มเติม",
+      code: "PASSWORD_NOT_SET",
+    });
+  }
+  const { currentPassword, newPassword } = req.body ?? {};
+  if (typeof currentPassword !== "string" || !verifyPassword(currentPassword, user.passwordHash)) {
+    persistentDb.logAudit("ACCOUNT_PASSWORD_CHANGE_FAILED", currentUserId, "Current password mismatch");
+    return res.status(403).json({ error: "รหัสผ่านปัจจุบันไม่ถูกต้อง" });
+  }
+  if (typeof newPassword !== "string" || newPassword.length < 8 || newPassword.length > 128) {
+    return res.status(400).json({ error: "รหัสผ่านใหม่ต้องยาว 8–128 ตัวอักษร" });
+  }
+  if (verifyPassword(newPassword, user.passwordHash)) {
+    return res.status(400).json({ error: "รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม" });
+  }
+  user.passwordHash = hashPassword(newPassword);
+  user.sessionVersion = (Number.isSafeInteger(user.sessionVersion) ? user.sessionVersion : 0) + 1;
+  persistentDb.save();
+  persistentDb.logAudit("ACCOUNT_PASSWORD_CHANGED", currentUserId, "Revoked existing sessions");
+  res.json({ success: true, message: "เปลี่ยนรหัสผ่านแล้ว เซสชันเดิมทั้งหมดถูกยกเลิก กรุณาเข้าสู่ระบบใหม่" });
 });
 
 // 25. PDPA & Compliance Hardening Endpoints

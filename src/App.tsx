@@ -22,13 +22,9 @@ const FarmPlots = lazy(() => import('./routes/FarmPlots').then((m) => ({ default
 const SupportedDiseases = lazy(() =>
   import('./routes/SupportedDiseases').then((m) => ({ default: m.SupportedDiseases })),
 );
-const Pricing = lazy(() => import('./routes/Pricing').then((m) => ({ default: m.Pricing })));
-const Checkout = lazy(() => import('./routes/Checkout').then((m) => ({ default: m.Checkout })));
-const PaymentSuccess = lazy(() => import('./routes/PaymentSuccess').then((m) => ({ default: m.PaymentSuccess })));
-const Billing = lazy(() => import('./routes/Billing').then((m) => ({ default: m.Billing })));
 const AccountSettings = lazy(() => import('./routes/AccountSettings').then((m) => ({ default: m.AccountSettings })));
-const Security = lazy(() => import('./routes/Security').then((m) => ({ default: m.Security })));
-const LineAlerts = lazy(() => import('./routes/LineAlerts').then((m) => ({ default: m.LineAlerts })));
+const Security = lazy(() => import('./routes/AccountSettings').then((m) => ({ default: () => <m.AccountSettings initialTab="security" /> })));
+const LineAlerts = lazy(() => import('./routes/AccountSettings').then((m) => ({ default: () => <m.AccountSettings initialTab="line" /> })));
 const About = lazy(() => import('./routes/About').then((m) => ({ default: m.About })));
 const Research = lazy(() => import('./routes/Research').then((m) => ({ default: m.Research })));
 const DataDispute = lazy(() => import('./routes/DataDispute').then((m) => ({ default: m.DataDispute })));
@@ -52,13 +48,11 @@ const AiEvaluation = lazy(() =>
   import('./routes/AiEvaluation').then((m) => ({ default: m.AiEvaluation })),
 );
 
-const ScannerBlocked = () => <StatusPage code="403" />;
-
 /** Static routes. The dynamic `/status/:code` is matched separately. */
 const ROUTES: Record<string, ComponentType> = {
   '/': Landing,
   '/chat': ChatAssistant,
-  '/scanner': ScannerBlocked,
+  '/scanner': SweetnessScanner,
   '/cultivation': CultivationGuide,
   '/market': MarketPrices,
   '/fertilizer': FertilizerDirectory,
@@ -66,10 +60,6 @@ const ROUTES: Record<string, ComponentType> = {
   '/plots': FarmPlots,
   '/diseases': SupportedDiseases,
   '/disease-scan': DiseaseScan,
-  '/pricing': Pricing,
-  '/checkout': Checkout,
-  '/payment-success': PaymentSuccess,
-  '/billing': Billing,
   '/settings': AccountSettings,
   '/security': Security,
   '/alerts': LineAlerts,

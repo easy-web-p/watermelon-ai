@@ -42,6 +42,5 @@ export const MARKETING_NAV: readonly { path: string; label: string }[] = [
   { path: '/evaluation', label: 'การวัดผล AI' },
   { path: '/diseases', label: 'โรคแตงโมที่รองรับ' },
   { path: '/about', label: 'ข้อมูลเกี่ยวกับเรา' },
-  { path: '/pricing', label: 'ราคา' },
 ] as const;
 

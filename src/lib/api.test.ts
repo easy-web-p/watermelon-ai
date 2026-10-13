@@ -209,4 +209,60 @@ describe('api endpoints', () => {
     expect(res.success).toBe(true);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/auth/me');
   });
+
+  it('sends Firebase proof for social login, not a browser-supplied email', async () => {
+    const fetchMock = jsonFetch({ success: true, user: { id: 'usr-google', name: 'เกษตรกร' }, token: 'jwt' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.socialLogin({ provider: 'google', idToken: 'firebase-id-token' });
+    expect(JSON.parse(callInit(fetchMock).body)).toEqual({ provider: 'google', idToken: 'firebase-id-token' });
+  });
+
+  it('loads account settings and consent from the authenticated endpoint', async () => {
+    const fetchMock = jsonFetch({
+      success: true,
+      user: { id: 'usr-1', name: 'เกษตรกร' },
+      consent: { improveModel: false, analytics: false, marketing: false, shareAnonymised: false, locationAlerts: false },
+      capabilities: { passwordChange: true, avatarUpload: false, twoFactor: false, lineNotifications: false },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await api.accountSettings();
+    expect(result.consent.improveModel).toBe(false);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/users/me/settings');
+    expect(callInit(fetchMock).method).toBe('GET');
+  });
+
+  it('patches only editable profile fields', async () => {
+    const fetchMock = jsonFetch({ success: true, user: { id: 'usr-1', name: 'ชื่อใหม่' } });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.updateProfile({ name: 'ชื่อใหม่', organization: 'สวนจริง', province: 'สุพรรณบุรี', plotSize: '12.5' });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/users/me/profile');
+    expect(callInit(fetchMock).method).toBe('PATCH');
+    expect(JSON.parse(callInit(fetchMock).body)).toEqual({
+      name: 'ชื่อใหม่', organization: 'สวนจริง', province: 'สุพรรณบุรี', plotSize: '12.5',
+    });
+  });
+
+  it('submits current and new password to the password endpoint', async () => {
+    const fetchMock = jsonFetch({ success: true, message: 'เปลี่ยนรหัสผ่านแล้ว' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.changePassword({ currentPassword: 'old-password', newPassword: 'new-password' });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/users/me/password');
+    expect(callInit(fetchMock).method).toBe('POST');
+    expect(JSON.parse(callInit(fetchMock).body)).toEqual({ currentPassword: 'old-password', newPassword: 'new-password' });
+  });
+
+  it('patches consent and returns the server-confirmed value', async () => {
+    const fetchMock = jsonFetch({ success: true, consent: { improveModel: true } });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await api.updateConsent({ improveModel: true });
+    expect(result.consent.improveModel).toBe(true);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/users/me/consent');
+    expect(callInit(fetchMock).method).toBe('PATCH');
+    expect(JSON.parse(callInit(fetchMock).body)).toEqual({ improveModel: true });
+  });
 });

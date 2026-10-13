@@ -8,8 +8,9 @@ import { Link, useRouter } from '../../lib/router';
 import { cn } from '../../lib/cn';
 import { MARKETING_NAV } from '../../data/nav';
 import { useAuth } from '../../store/auth';
+import { UserProfileDropdown } from './UserProfileDropdown';
 
-/** Public chrome for the landing page, pricing, policies and status screens. */
+/** Public chrome for the landing page, policies and status screens. */
 export function MarketingShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const { path, navigate } = useRouter();
@@ -24,13 +25,6 @@ export function MarketingShell({ children }: { children: ReactNode }) {
     setOpen(false);
   }
 
-  function handleBack() {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      navigate('/');
-    }
-  }
 
   return (
     <div className="flex min-h-screen flex-col bg-surface">
@@ -68,20 +62,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
 
           <div className="flex items-center gap-2 shrink-0">
             {user ? (
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/chat"
-                  className="flex items-center gap-2 rounded-full bg-surface-container-low px-3 py-1.5 text-label-md font-semibold text-on-surface hover:bg-surface-container transition-colors"
-                >
-                  <span className="flex size-7 items-center justify-center rounded-full bg-primary text-on-primary font-bold text-xs">
-                    {user.name.slice(0, 1)}
-                  </span>
-                  <span className="hidden sm:inline max-w-[120px] truncate">{user.name}</span>
-                </Link>
-                <Button size="sm" variant="ghost" onClick={handleSignOut}>
-                  ออกจากระบบ
-                </Button>
-              </div>
+              <UserProfileDropdown />
             ) : (
               <>
                 <Link
@@ -110,21 +91,6 @@ export function MarketingShell({ children }: { children: ReactNode }) {
         {open ? (
           <nav className="border-t border-outline-variant/30 bg-surface-lowest px-4 py-3 lg:hidden" aria-label="เมนูมือถือ">
             <ul className="flex flex-col gap-1">
-              {path !== '/' && (
-                <li className="mb-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpen(false);
-                      handleBack();
-                    }}
-                    className="flex w-full items-center gap-2 rounded-full px-4 py-2.5 text-label-lg font-semibold text-on-surface-variant hover:bg-surface-low cursor-pointer"
-                  >
-                    <Icon name="arrow_back" size={18} />
-                    <span>ย้อนกลับ</span>
-                  </button>
-                </li>
-              )}
               {MARKETING_NAV.map((item) => (
                 <li key={item.path}>
                   <Link
@@ -142,16 +108,45 @@ export function MarketingShell({ children }: { children: ReactNode }) {
                   </Link>
                 </li>
               ))}
-              <li className="mt-2 flex gap-2 border-t border-outline-variant/30 pt-3">
+              <li className="mt-2 flex flex-col gap-1 border-t border-outline-variant/30 pt-3">
                 {user ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="flex-1"
-                    onClick={handleSignOut}
-                  >
-                    ออกจากระบบ ({user.name})
-                  </Button>
+                  <>
+                    <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-surface-low mb-1">
+                      <span className="flex size-8 items-center justify-center rounded-full bg-primary text-on-primary font-bold text-sm">
+                        {user.name.slice(0, 1).toUpperCase()}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-label-md font-bold text-on-surface">{user.name}</p>
+                        <p className="truncate text-caption text-on-surface-variant">
+                          {user.phone || user.email || 'เกษตรกรผู้ใช้งาน'}
+                        </p>
+                      </div>
+                    </div>
+                    <Link
+                      to="/settings?tab=profile"
+                      onClick={() => setOpen(false)}
+                      className="flex items-center gap-2.5 rounded-full px-4 py-2 text-label-md font-semibold text-on-surface hover:bg-surface-low"
+                    >
+                      <Icon name="account_circle" size={18} className="text-secondary" />
+                      <span>โปรไฟล์ User</span>
+                    </Link>
+                    <Link
+                      to="/settings"
+                      onClick={() => setOpen(false)}
+                      className="flex items-center gap-2.5 rounded-full px-4 py-2 text-label-md font-semibold text-on-surface hover:bg-surface-low"
+                    >
+                      <Icon name="settings" size={18} className="text-outline" />
+                      <span>ตั้งค่า</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-full border border-outline-variant/60 py-2.5 px-4 text-label-lg font-bold text-on-surface hover:border-error hover:text-error hover:bg-error/5 transition-colors cursor-pointer"
+                    >
+                      <Icon name="logout" size={18} />
+                      <span>ออกจากระบบ</span>
+                    </button>
+                  </>
                 ) : (
                   <>
                     <Button
@@ -196,8 +191,8 @@ const FOOTER_GROUPS = [
     links: [
       { label: 'แชทปรึกษา AI', path: '/chat' },
       { label: 'สแกนโรคแตงโม', path: '/diseases' },
-      { label: 'วัดความหวาน Brix', path: '/scanner' },
-      { label: 'ราคาตลาดวันนี้', path: '/market' },
+      { label: 'เสียงเคาะ (อยู่ระหว่างวิจัย)', path: '/scanner' },
+      { label: 'บันทึกราคาตลาด', path: '/market' },
       { label: 'คู่มือปลูก & ดูแล', path: '/cultivation' },
       { label: 'สูตรแปรรูปแตงโม', path: '/recipes' },
     ],
@@ -208,7 +203,6 @@ const FOOTER_GROUPS = [
       { label: 'เกี่ยวกับเรา', path: '/about' },
       { label: 'งานวิจัย & สิ่งพิมพ์', path: '/research' },
       { label: 'เอกสารเชื่อมต่อ API', path: '/api-docs' },
-      { label: 'แพ็กเกจและราคา', path: '/pricing' },
       { label: 'สถานะระบบ', path: '/status/200' },
     ],
   },
@@ -231,8 +225,8 @@ export function SiteFooter() {
           <div className="lg:col-span-2">
             <Logo />
             <p className="mt-4 max-w-sm text-body-md text-on-surface-variant">
-              ผู้ช่วย AI สำหรับเกษตรกรแตงโมไทย วินิจฉัยโรคพืชจากภาพถ่าย ประเมินความหวาน Brix
-              ติดตามราคาตลาด และวางแผนการดูแลแปลงตลอดฤดูกาล
+              ผู้ช่วยคัดกรองอาการใบแตงโมจากภาพถ่าย พร้อมข้อมูลอ้างอิงการดูแลแปลง
+              ผล AI เป็นเครื่องมือช่วยตัดสินใจ และฟีเจอร์เสียงเคาะยังอยู่ระหว่างวิจัย
             </p>
             <div className="mt-5 flex items-center gap-2">
               {['chat', 'mail', 'public'].map((icon) => (
@@ -268,9 +262,9 @@ export function SiteFooter() {
         <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-outline-variant/30 pt-6 text-caption text-on-surface-variant md:flex-row">
           <div className="flex flex-wrap items-center justify-center gap-4">
             {[
-              { icon: 'verified_user', label: 'ISO 27001 Certified' },
-              { icon: 'security', label: 'PDPA Compliant' },
-              { icon: 'lock', label: 'SSL 256-bit Encrypted' },
+              { icon: 'verified_user', label: 'ตรวจสอบผล AI ก่อนนำไปใช้' },
+              { icon: 'security', label: 'อ่านนโยบายความเป็นส่วนตัว' },
+              { icon: 'lock', label: 'แจ้งข้อมูลที่คลาดเคลื่อนได้' },
             ].map((item) => (
               <span key={item.label} className="flex items-center gap-1.5">
                 <Icon name={item.icon} size={16} className="text-secondary" />
@@ -351,15 +345,15 @@ export function AuthShell({
           <div className="flex flex-wrap items-center justify-center gap-4">
             <span className="flex items-center gap-1.5">
               <Icon name="verified_user" size={16} className="text-secondary" />
-              ISO 27001 Certified
+              AI เป็นเครื่องมือช่วยตัดสินใจ
             </span>
             <span className="flex items-center gap-1.5">
               <Icon name="gavel" size={16} className="text-secondary" />
-              PDPA Compliant
+              ตรวจสอบข้อมูลก่อนใช้สารเคมี
             </span>
             <span className="flex items-center gap-1.5">
               <Icon name="lock" size={16} className="text-secondary" />
-              SSL 256-bit Encrypted
+              แจ้งข้อมูลที่คลาดเคลื่อนได้
             </span>
           </div>
           <p className="text-center md:text-right">

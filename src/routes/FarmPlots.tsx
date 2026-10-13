@@ -753,7 +753,7 @@ export function FarmPlots() {
                     onClick={() => navigate('/scanner')}
                   >
                     <Icon name="graphic_eq" size={16} className="text-secondary" />
-                    เคาะวัด Brix
+                    วัดเสียงเคาะ / กรอก Brix จริง
                   </Button>
                   <Button
                     variant="ghost"

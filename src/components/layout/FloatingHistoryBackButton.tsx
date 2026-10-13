@@ -17,7 +17,6 @@ export const ROUTE_META: Record<string, { title: string; icon: string }> = {
   '/alerts': { title: 'แจ้งเตือนผ่าน LINE', icon: 'notifications_active' },
   '/about': { title: 'ข้อมูลเกี่ยวกับเรา', icon: 'info' },
   '/research': { title: 'งานวิจัย & Dataset', icon: 'menu_book' },
-  '/pricing': { title: 'แพ็กเกจและราคา', icon: 'workspace_premium' },
   '/support': { title: 'ศูนย์ช่วยเหลือ', icon: 'support_agent' },
   '/settings': { title: 'ตั้งค่าบัญชี', icon: 'settings' },
   '/security': { title: 'ความปลอดภัย', icon: 'shield' },

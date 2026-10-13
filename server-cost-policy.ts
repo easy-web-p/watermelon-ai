@@ -64,7 +64,7 @@ export function chatModelPolicy(env: NodeJS.ProcessEnv = process.env): CostPolic
       enabled: false,
       reason:
         "มี GEMINI_API_KEY แต่ปิดการเรียกโมเดลที่เสียเงินไว้ " +
-        "(ตั้ง CHAT_ENABLE_GEMINI=1 เพื่อเปิด) ระหว่างนี้ตอบด้วยระบบกฎในเครื่องซึ่งไม่มีค่าใช้จ่าย",
+        "(ตั้ง CHAT_ENABLE_GEMINI=1 เพื่อเปิด) ระหว่างนี้แชทข้อความจะบอกว่าโมเดลยังไม่พร้อมและไม่มีค่าใช้จ่าย",
     };
   }
   return { enabled: true, reason: "" };

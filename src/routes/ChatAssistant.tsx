@@ -20,10 +20,10 @@ import {
   type KnockAnalysis,
   type VisionCompareResponse,
 } from '../lib/api';
-import type { VisionEngineInfo, VisionEngineName } from '../lib/visionEngines';
-import { FALLBACK_ENGINES } from './DiseaseScan';
+import { FALLBACK_ENGINES, type VisionEngineInfo, type VisionEngineName } from '../lib/visionEngines';
 import {
   getLocalMessages,
+  mergeServerAndLocalVisionMessages,
   rememberConversationId,
   restoreConversationId,
   saveLocalMessages,
@@ -31,7 +31,7 @@ import {
   verifyConversationOwnership,
   type ConversationOwnership,
 } from '../lib/chatHistory';
-import { compressImage, useKnockRecorder, validateImage } from '../lib/media';
+import { compressImage, recordingToPcm, useKnockRecorder, validateImage } from '../lib/media';
 import { useAuth, useDisplayUser } from '../store/auth';
 import { useChat } from '../store/chat';
 import { QUICK_PROMPTS, QUICK_TOOLS } from '../data/chat';
@@ -46,6 +46,8 @@ type Message = {
   knock?: KnockAnalysis;
   disease?: DiseaseDetection;
   visionCompare?: VisionCompareResponse;
+  modelVersion?: string;
+  createdAt?: string;
   failed?: boolean;
 };
 
@@ -133,7 +135,7 @@ function AssistantBar({
           </div>
           <p className="flex items-center gap-1.5 text-caption text-secondary">
             <span className="size-1.5 rounded-full bg-secondary" />
-            ผู้เชี่ยวชาญวิเคราะห์โรคแตงโม &amp; ศัตรูพืชอัจฉริยะ ตลอด 24 ชม.
+            ผู้ช่วยคัดกรองอาการใบแตงโมจากภาพ พร้อมแสดงสถานะเครื่องยนต์ที่ใช้จริง
           </p>
         </div>
       </div>
@@ -247,7 +249,13 @@ function MessageRow({
         {message.failed ? null : (
           <div className="flex flex-wrap items-center justify-between gap-2 px-2 text-caption text-outline">
             <div className="flex items-center gap-3">
-              <span>คำตอบสร้างโดย Melon Core LLM 2.4</span>
+              <span>{message.visionCompare
+                ? `ข้อสังเกตโดย ${message.visionCompare.engine}`
+                : message.disease
+                  ? `ผลวิเคราะห์โดย ${message.disease.model_version}`
+                  : message.modelVersion
+                    ? `คำตอบโดย ${message.modelVersion}`
+                    : 'ข้อความจากระบบ'}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -279,15 +287,17 @@ const GREETING: Message = {
   id: 'greeting',
   role: 'assistant',
   time: '',
-  text: 'สวัสดีครับ! ผมคือน้องแตงโม AI 🍉\n\nถ่ายรูปใบหรือลำต้นที่มีอาการมาให้ดู หรือพิมพ์อธิบายสิ่งที่พบในแปลงได้เลยครับ ผมจะช่วยวินิจฉัยโรค ประเมินความรุนแรง และแนะนำแผนการรักษาให้\n\n- **ถ่ายรูป** เพื่อวินิจฉัยโรคจากภาพ\n- **กดไมค์** เพื่อบันทึกเสียงเคาะวัดความสุก\n- **พิมพ์คำถาม** เรื่องการปลูก ราคาตลาด หรือการดูแลแปลง',
+  text: 'สวัสดีครับ! ผมคือน้องแตงโม AI 🍉\n\nคุยเรื่องการปลูกแตงโมได้ และส่งภาพใบเพื่อคัดกรองโรคจากเครื่องยนต์ที่เลือก โมเดลหลักรองรับ 4 คลาส ส่วนโมเดลทางเลือกให้ข้อสังเกตเพิ่มเติม\n\nอัดเสียงเคาะเพื่อวัดคุณสมบัติคลื่นเสียงได้ แต่ยังทำนายความสุกหรือ °Brix จากเสียงไม่ได้ ผล AI เป็นเครื่องมือช่วยตัดสินใจ ไม่ใช่คำวินิจฉัยยืนยัน หากบริการไม่พร้อม ระบบจะแจ้งตรง ๆ ครับ',
 };
 
 export function ChatAssistant() {
   const [messages, setMessages] = useState<Message[]>([GREETING]);
+  const messagesRef = useRef<Message[]>([GREETING]);
   const [draft, setDraft] = useState('');
   const [mode, setMode] = useState<ChatMode>('general');
-  const [visionEngine, setVisionEngine] = useState<VisionEngineName>('wide9');
+  const [visionEngine, setVisionEngine] = useState<VisionEngineName>('legacy4');
   const [engineList, setEngineList] = useState<readonly VisionEngineInfo[]>(FALLBACK_ENGINES);
+  const [engineListError, setEngineListError] = useState<string | null>(null);
   const [showEngineModal, setShowEngineModal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pendingImage, setPendingImage] = useState<{ dataUrl: string; name: string } | null>(null);
@@ -297,6 +307,7 @@ export function ChatAssistant() {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const conversationId = useRef(restoreConversationId(() => newId('conv')));
   const lastSend = useRef<(() => void) | null>(null);
+  const lastAnalysedClip = useRef<string | null>(null);
 
   const toast = useToast();
   const recorder = useKnockRecorder();
@@ -311,10 +322,21 @@ export function ChatAssistant() {
   const ownership = verifyConversationOwnership(activeConv, user);
 
   useEffect(() => {
-    api.acousticModelStatus().then((st) => setAcousticOnline(st.online)).catch(() => setAcousticOnline(false));
+    let active = true;
+    api.acousticModelStatus().then((st) => {
+      if (active) setAcousticOnline(st.online);
+    }).catch(() => {
+      if (active) setAcousticOnline(false);
+    });
     api.visionEngines().then((res) => {
-      if (res.engines?.length) setEngineList(res.engines);
-    }).catch(() => undefined);
+      if (active) {
+        setEngineList(res.engines);
+        setEngineListError(null);
+      }
+    }).catch((error: unknown) => {
+      if (active) setEngineListError(error instanceof Error ? error.message : 'โหลดรายการเครื่องยนต์ไม่ได้');
+    });
+    return () => { active = false; };
   }, []);
 
   const threadMatch = path.match(/^\/chat\/([^/?#]+)/);
@@ -343,7 +365,10 @@ export function ChatAssistant() {
         const history = await api.listMessages(currentThread);
         if (cancelled) return;
         if (!history || !Array.isArray(history) || !history.length) return;
-        const feedMessages = history.map(toFeedMessage);
+        const feedMessages = mergeServerAndLocalVisionMessages(
+          history.map(toFeedMessage),
+          getLocalMessages(currentThread),
+        );
         setMessages([GREETING, ...feedMessages]);
         saveLocalMessages(currentThread, feedMessages);
       } catch (error) {
@@ -390,43 +415,45 @@ export function ChatAssistant() {
     feedEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, busy]);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   const append = useCallback((message: Message, previewTitle?: string) => {
-    setMessages((prev) => {
-      const next = [...prev, message];
-      saveLocalMessages(conversationId.current, next);
+    const next = [...messagesRef.current, { ...message, createdAt: message.createdAt ?? new Date().toISOString() }];
+    messagesRef.current = next;
+    setMessages(next);
+    saveLocalMessages(conversationId.current, next);
 
-      const convId = conversationId.current;
-      const currentConvs = useChat.getState().conversations;
-      const existing = currentConvs.find((c) => c.id === convId);
+    const convId = conversationId.current;
+    const currentConvs = useChat.getState().conversations;
+    const existing = currentConvs.find((c) => c.id === convId);
 
-      const title =
-        existing?.title ||
-        previewTitle ||
-        (message.role === 'user'
-          ? message.text
-            ? message.text.slice(0, 30)
-            : message.imageUrl
-              ? 'ตรวจโรคจากภาพถ่าย'
-              : 'บันทึกเสียงเคาะ'
-          : 'บทสนทนากับน้องแตงโม AI');
+    const title =
+      existing?.title ||
+      previewTitle ||
+      (message.role === 'user'
+        ? message.text
+          ? message.text.slice(0, 30)
+          : message.imageUrl
+            ? 'ตรวจโรคจากภาพถ่าย'
+            : 'บันทึกเสียงเคาะ'
+        : 'บทสนทนากับน้องแตงโม AI');
 
-      useChat.getState().upsertConversation({
-        id: convId,
-        userId: existing?.userId || user?.id || 'guest-anonymous',
-        title: title + (title.length >= 30 ? '...' : ''),
-        lastMessage:
-          message.text?.slice(0, 40) ||
-          (message.imageUrl ? 'ส่งรูปภาพ' : message.audioUrl ? 'ส่งเสียงเคาะ' : 'ผลวิเคราะห์'),
-        messageCount: (existing?.messageCount ?? 0) + 1,
-        createdAt: existing?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        isPinned: existing?.isPinned ?? false,
-        chatMode: existing?.chatMode ?? mode,
-      });
-
-      return next;
+    useChat.getState().upsertConversation({
+      id: convId,
+      userId: existing?.userId || user?.id || 'guest-anonymous',
+      title: title + (title.length >= 30 ? '...' : ''),
+      lastMessage:
+        message.text?.slice(0, 40) ||
+        (message.imageUrl ? 'ส่งรูปภาพ' : message.audioUrl ? 'ส่งเสียงเคาะ' : 'ผลวิเคราะห์'),
+      messageCount: (existing?.messageCount ?? 0) + 1,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isPinned: existing?.isPinned ?? false,
+      chatMode: existing?.chatMode ?? mode,
     });
-  }, []);
+  }, [mode, user?.id]);
 
   /* ── Text / image send ───────────────────────────────────────────── */
 
@@ -435,6 +462,13 @@ export function ChatAssistant() {
       const trimmed = text.trim();
       const photo = image ?? null;
       if (!trimmed && !photo) return;
+
+      // Signed-out visitors have no server-side thread by design. Send a
+      // bounded copy of their device-local text turns for conversational memory.
+      const history = getLocalMessages(conversationId.current)
+        .filter((message) => !message.failed && message.id !== 'greeting' && message.text?.trim())
+        .map((message) => ({ role: message.role, content: message.text!.trim() }))
+        .slice(-12);
 
       append({
         id: newId('u'),
@@ -450,12 +484,12 @@ export function ChatAssistant() {
 
       try {
         if (photo) {
-          // Vision path: use the selected engine (Claude Vision, Wide-9, or Legacy-4)
+          // Vision path: every non-legacy engine is supplemental only.
           let compareData: VisionCompareResponse | undefined;
           let diseaseData: DiseaseDetection | undefined;
           let replyContent = '';
 
-          if (visionEngine === 'claude' || visionEngine === 'wide9') {
+          if (visionEngine !== 'legacy4') {
             try {
               compareData = await api.visionCompare({
                 imageBase64: photo.dataUrl,
@@ -463,36 +497,22 @@ export function ChatAssistant() {
                 notes: trimmed || 'วิเคราะห์โรคใบแตงโมผ่านแชท',
               });
 
-              const engLabel =
-                visionEngine === 'claude'
-                  ? '✨ Claude Vision (โมเดลวิเคราะห์เชิงลึกระดับสูง)'
-                  : '🔬 Wide-9 (โมเดลมุมกว้าง 9 คลาส)';
+              const engLabel = engineList.find((engine) => engine.name === visionEngine)?.title_th ?? visionEngine;
               const pred = compareData.prediction;
-              const predClass =
-                pred?.predicted_class || pred?.class_id || 'วิเคราะห์อาการผิดปกติ';
-              const conf = pred?.confidence_percentage
-                ? `${pred.confidence_percentage}%`
-                : pred?.confidence
-                  ? `${Math.round(pred.confidence * 100)}%`
-                  : '';
-              const explanation = pred?.explanation
-                ? `\n\n📋 **ข้อสังเกตและเหตุผลประกอบ:**\n${pred.explanation}`
-                : '';
-
-              replyContent =
-                `น้องแตงโม AI ได้วิเคราะห์ภาพด้วยเครื่องยนต์ **${engLabel}** เรียบร้อยแล้วครับ 🍉\n\n` +
-                `• **ข้อสังเกตอาการ:** **${predClass}** ${conf ? `(คะแนนความมั่นใจ ${conf})` : ''}` +
-                explanation +
-                `\n\n🌱 *ดูรายละเอียดผลวิเคราะห์และข้อแนะนำการจัดการในบัตรสังเกตอาการด้านล่างนี้ได้เลยครับ*`;
+              const unusable = pred.abstain === true || pred.is_plant_image === false;
+              const summary = typeof pred.summary_th === 'string' ? pred.summary_th :
+                typeof pred.explanation === 'string' ? pred.explanation : '';
+              replyContent = unusable
+                ? `เครื่องยนต์ **${engLabel}** ยังให้ข้อสังเกตจากภาพนี้ไม่ได้ กรุณาถ่ายภาพใบแตงโมที่ชัดเจนแล้วลองใหม่ครับ`
+                : `ข้อสังเกตเพิ่มเติมจาก **${engLabel}** (ไม่ใช่คำวินิจฉัย) 🍉\n\n${summary || 'ดูรายละเอียดผลอ่านภาพด้านล่าง'}\n\nคะแนนของโมเดลที่ยังไม่ปรับเทียบไม่ใช่ความน่าจะเป็นของโรค`;
             } catch (cmpErr) {
               // ห้ามถอยไปใช้เส้นทางอื่นเงียบ ๆ (AGENTS.md หัวข้อ 3 ข้อ 4)
               // ผู้ใช้เลือก Claude Vision หรือ Wide-9 มาโดยตั้งใจ ถ้าได้คำตอบจาก
               // เส้นทางอื่นแทนโดยไม่รู้ตัว จะเข้าใจว่าผลมาจากเครื่องยนต์ที่เลือก
               // ซึ่งตีความตัวเลขความมั่นใจต่างกัน (ตัวหนึ่งปรับเทียบแล้ว อีกตัวยังไม่)
-              const engineLabel = visionEngine === 'claude' ? 'Claude Vision' : 'Wide-9';
+              const engineLabel = engineList.find((engine) => engine.name === visionEngine)?.title_th ?? visionEngine;
               console.warn(`[chat] ${visionEngine} engine call failed`, cmpErr);
-              toast.error(`เรียกเครื่องยนต์ ${engineLabel} ไม่สำเร็จ จึงยังไม่มีผลวิเคราะห์`);
-              throw cmpErr;
+              throw new Error(`เรียกเครื่องยนต์ ${engineLabel} ไม่สำเร็จ: ${cmpErr instanceof Error ? cmpErr.message : 'ไม่ทราบสาเหตุ'}`);
             }
           }
 
@@ -502,6 +522,7 @@ export function ChatAssistant() {
               mode: 'disease-diagnosis',
               imageBase64: photo.dataUrl,
               allow_training: allowTraining,
+              history,
             });
             replyContent = reply.content;
             diseaseData = reply.diseaseDetection;
@@ -514,12 +535,14 @@ export function ChatAssistant() {
             text: replyContent,
             disease: diseaseData,
             visionCompare: compareData,
+            modelVersion: compareData ? undefined : diseaseData?.model_version,
           });
         } else {
           const reply = await api.sendMessage(conversationId.current, {
             content: trimmed,
             mode,
             allow_training: allowTraining,
+            history,
           });
           append({
             id: reply.id,
@@ -527,67 +550,20 @@ export function ChatAssistant() {
             time: nowLabel(),
             text: reply.content,
             knock: reply.knockAnalysis,
+            modelVersion: reply.modelVersion,
           });
         }
         void useChat.getState().loadConversations();
       } catch (error) {
-        const isOffline =
-          (error instanceof ApiError && (error.status === 404 || error.status === 502 || error.status === 503)) ||
-          error instanceof NetworkError;
-
-        if (isOffline) {
-          let replyText: string;
-          if (photo) {
-            // ห้ามตอบรายการโรคพร้อมชื่อสารและค่า PHI เมื่อยังไม่ได้วิเคราะห์ภาพ
-            // (AGENTS.md หัวข้อ 3 ข้อ 4 และข้อ 6)
-            //
-            // เวอร์ชันก่อนหน้าตอบว่า "ได้รับภาพตัวอย่างแล้ว" แล้วแจกชื่อสาร 5 ตัว
-            // พร้อมค่า PHI ทั้งที่ภาพไม่เคยถูกส่งไปที่โมเดลเลย เป็นความผิดพลาด
-            // ชนิดเดียวกับที่ fastapi_service/main.py อธิบายไว้ว่าเวอร์ชันเก่า
-            // ของเซอร์วิสตอบด้วย random.choices() ซึ่ง "ทำให้เกษตรกรพ่นสาร
-            // ที่เลือกมาด้วยเครื่องสุ่มตัวเลข"
-            //
-            // สิ่งที่พูดได้เมื่อวิเคราะห์ไม่ได้คือบอกว่าวิเคราะห์ไม่ได้ ไม่ใช่เดาให้
-            replyText =
-              'ยังวิเคราะห์ภาพนี้ไม่ได้ครับ 🍉\n\n' +
-              'ระบบวิเคราะห์ภาพยังเชื่อมต่อไม่ได้ จึงยัง**ไม่มีผลวินิจฉัยสำหรับภาพที่ส่งมา** ' +
-              'ภาพของคุณยังอยู่ในห้องแชทนี้ กดส่งอีกครั้งเมื่อระบบกลับมาได้เลย\n\n' +
-              'ระบบจะไม่เดาชื่อโรคหรือแนะนำสารเคมีจากภาพที่ยังไม่ได้วิเคราะห์ ' +
-              'เพราะการพ่นสารผิดชนิดทำให้เสียค่าใช้จ่ายโดยไม่ได้ผล และอาจมีสารตกค้างเกินมาตรฐาน\n\n' +
-              'ระหว่างนี้ถ้าต้องการ สามารถพิมพ์อธิบายอาการที่เห็น เช่น สีและรูปร่างของแผล ' +
-              'ตำแหน่งบนใบ และใต้ใบมีขุยหรือไม่ แล้วผมช่วยไล่ความเป็นไปได้จากคลังความรู้ให้ได้ครับ';
-          } else if (trimmed.includes('ผสม') || trimmed.includes('ยา') || trimmed.includes('สาร')) {
-            replyText =
-              'ลำดับการผสมสารเคมีในถังพ่น (Tank Mix Order) ที่ถูกต้องตามหลักวิชาการ:\n\n' +
-              '1. สารปรับสภาพน้ำ / ปรับ pH\n' +
-              '2. สารชนิดผงละลายน้ำ (WP, WG, SP)\n' +
-              '3. สารแขวนลอยเข้มข้น (SC, CS)\n' +
-              '4. สารละลายน้ำมันเข้มข้น (EC, EW)\n' +
-              '5. สารจับใบ / สารเสริมประสิทธิภาพ (Adjuvants)\n\n' +
-              '⚠️ *ข้อควรระวัง: ห้ามผสมสารกลุ่มคอปเปอร์ร่วมกับกรดอะมิโน และปฏิบัติตามค่าระยะปลอดภัยก่อนเก็บเกี่ยว (PHI) บนฉลากเสมอ*';
-          } else {
-            replyText =
-              `น้องแตงโม AI ได้รับคำถาม: "${trimmed}" 🍉\n\n` +
-              '*(โหมดแสดงผลคลาวด์พรีวิว)*\n' +
-              'คุณสามารถปรึกษาเรื่องโรคแตงโม ศัตรูพืช การผสมสารเคมี และการดูแลระยะแปลงได้ทันที หากต้องการเชื่อมต่อโมเดล Deep Learning เต็มรูปแบบ สามารถเปิดเซิร์ฟเวอร์ Express ในเครื่องได้ครับ';
-          }
-
-          append({
-            id: newId('offline-reply'),
-            role: 'assistant',
-            time: nowLabel(),
-            text: replyText,
-          });
-        } else {
-          const message = error instanceof Error ? error.message : 'ส่งข้อความไม่สำเร็จ';
-          toast.error(message);
-          append({ id: newId('err'), role: 'assistant', time: nowLabel(), text: message, failed: true });
-        }
+        const detail = error instanceof Error ? error.message : 'ไม่ทราบสาเหตุ';
+        const message = photo ? `ยังไม่มีผลวิเคราะห์ภาพ: ${detail}` : `ยังไม่มีคำตอบจาก AI: ${detail}`;
+        toast.error(message);
+        append({ id: newId('err'), role: 'assistant', time: nowLabel(), text: message, failed: true });
       } finally {
         setBusy(false);
       }
     },
-    [append, mode, visionEngine, allowTraining, toast],
+    [append, mode, visionEngine, engineList, allowTraining, toast],
   );
 
   useEffect(() => {
@@ -623,62 +599,40 @@ export function ChatAssistant() {
     const clip = recorder.recording;
     if (!clip) return;
 
-    append({ id: newId('u'), role: 'user', time: nowLabel(), audioUrl: clip.dataUrl, text: 'เสียงเคาะผลแตงโม' });
+    append({ id: newId('u'), role: 'user', time: nowLabel(), text: 'บันทึกเสียงเคาะผลแตงโม' });
     recorder.reset();
     setBusy(true);
 
     try {
-      // Store the clip first so the analysis has something to reference.
-      const stored = await api
-        .uploadFile({ name: 'knock-recording.webm', mimeType: clip.mimeType, fileData: clip.dataUrl })
-        .catch(() => undefined);
-
-      const reply = await api.sendMessage(conversationId.current, {
-        content: `วิเคราะห์เสียงเคาะความยาว ${(clip.durationMs / 1000).toFixed(1)} วินาที`,
-        mode: 'knock-analysis',
-        attachment_ids: stored ? [stored.id] : undefined,
-        allow_training: allowTraining,
-      });
+      const pcm = await recordingToPcm(clip);
+      const reply = await api.analyseKnock(pcm);
 
       append({
-        id: reply.id,
+        id: newId('acoustic'),
         role: 'assistant',
         time: nowLabel(),
-        text: reply.knockAnalysis ? undefined : reply.content,
-        knock: reply.knockAnalysis,
+        text: [
+          'วัดคลื่นเสียงจากไฟล์นี้ได้ความถี่เด่น ' + reply.reading.dominant_frequency_hz + ' Hz จาก ' + reply.reading.impulse_count + ' จังหวะเคาะ',
+          reply.reading.brix_unavailable_reason_th,
+          'หากวัดค่า °Brix ด้วยรีแฟรกโตมิเตอร์แล้ว บอกตัวเลขและสายพันธุ์ที่ปลูกมาได้ ผมจะช่วยเทียบกับเป้าหมายที่คุณระบุครับ',
+        ].join('\n\n'),
+        modelVersion: 'FFT acoustic measurement',
       });
-      void useChat.getState().loadConversations();
     } catch (error) {
-      const isOffline =
-        (error instanceof ApiError && (error.status === 404 || error.status === 502 || error.status === 503)) ||
-        error instanceof NetworkError;
-      if (isOffline) {
-        append({
-          id: newId('offline-knock'),
-          role: 'assistant',
-          time: nowLabel(),
-          text:
-            'น้องแตงโม AI ได้รับเสียงเคาะแล้วครับ 🍉\n\n' +
-            '*(โหมดคลาวด์พรีวิว)*\n' +
-            'โมเดล Melon Acoustic Engine กำลังเตรียมประมวลผลบนเซิร์ฟเวอร์หลัก ในเบื้องต้นสามารถสังเกตความสุกทางกายภาพร่วมด้วย:\n' +
-            '- **เสียงทึบ กังวานปานกลาง (แปะๆ/ตึบๆ)**: บ่งบอกความสุกพอเหมาะ (85–90%) เหมาะสำหรับเก็บเกี่ยว\n' +
-            '- **เสียงแน่น แหลมสูง (ป๊อกๆ)**: ผลยังอ่อน เนื้อแน่นแต่ความหวานยังไม่เต็มที่\n' +
-            '- **เสียงหลวม กลวงต่ำ (ปุๆ)**: ผลสุกงอมเกินไป หรืออาจมีอาการไส้ล้ม/โพรงน้ำตาล\n\n' +
-            '⚠️ *คำแนะนำ: ควรสังเกตการเหี่ยวของมือเกาะที่ขั้วผลและจุดแต้มดินสีครีมเข้มประกอบการตัดสินใจเก็บเกี่ยว*',
-        });
-      } else {
-        const message = error instanceof Error ? error.message : 'วิเคราะห์เสียงไม่สำเร็จ';
-        toast.error(message);
-        append({ id: newId('err'), role: 'assistant', time: nowLabel(), text: message, failed: true });
-      }
+      const message = error instanceof Error ? error.message : 'วัดเสียงไม่สำเร็จ';
+      toast.error(message);
+      append({ id: newId('err'), role: 'assistant', time: nowLabel(), text: message, failed: true });
     } finally {
       setBusy(false);
     }
-  }, [recorder, append, allowTraining, toast]);
+  }, [recorder, append, toast]);
 
   // Fire the analysis as soon as a clip is ready, so the farmer only taps once.
   useEffect(() => {
-    if (recorder.state === 'ready' && recorder.recording) void analyseKnock();
+    if (recorder.state !== 'ready' || !recorder.recording) return;
+    if (lastAnalysedClip.current === recorder.recording.dataUrl) return;
+    lastAnalysedClip.current = recorder.recording.dataUrl;
+    void analyseKnock();
   }, [recorder.state, recorder.recording, analyseKnock]);
 
   useEffect(() => {
@@ -854,6 +808,7 @@ export function ChatAssistant() {
                 <button
                   type="button"
                   onClick={() => setVisionEngine('wide9')}
+                  disabled={!engineList.some((engine) => engine.name === 'wide9')}
                   className={cn(
                     'cursor-pointer rounded-full px-2.5 py-1 text-caption font-bold transition-all',
                     visionEngine === 'wide9'
@@ -867,13 +822,14 @@ export function ChatAssistant() {
                 <button
                   type="button"
                   onClick={() => setVisionEngine('legacy4')}
+                  disabled={!engineList.some((engine) => engine.name === 'legacy4')}
                   className={cn(
                     'cursor-pointer rounded-full px-2.5 py-1 text-caption font-bold transition-all',
                     visionEngine === 'legacy4'
                       ? 'bg-outline text-surface-lowest shadow-xs'
                       : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high',
                   )}
-                  title="Legacy-4: โมเดล 4 คลาสหลัก ปรับเทียบความมั่นใจแล้ว"
+                  title={engineList.find((engine) => engine.name === 'legacy4')?.description_th ?? 'Legacy-4: โมเดลหลัก 4 คลาส'}
                 >
                   Legacy-4
                 </button>
@@ -887,6 +843,7 @@ export function ChatAssistant() {
                 </button>
               </div>
             </div>
+            {engineListError && <p role="alert" className="text-caption text-error px-3">โหลดเครื่องยนต์ AI ไม่สำเร็จ: {engineListError}</p>}
 
             <div className="flex flex-col items-stretch justify-between gap-2 rounded-lg bg-surface-lowest p-2 pl-4 shadow-dock sm:flex-row sm:items-center sm:rounded-full sm:pl-5">
               <Segmented
@@ -1006,7 +963,7 @@ export function ChatAssistant() {
           setVisionEngine(eng);
           setShowEngineModal(false);
           toast.success(
-            `เปลี่ยนเครื่องยนต์ AI เป็น ${eng === 'claude' ? 'Claude Vision (เทพสุด)' : eng === 'wide9' ? 'Wide-9' : 'Legacy-4'} แล้ว`,
+            `เปลี่ยนเครื่องยนต์ AI เป็น ${engineList.find((engine) => engine.name === eng)?.title_th ?? eng} แล้ว`,
           );
         }}
       />

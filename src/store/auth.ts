@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { api, setAuthHeaders, ApiError, NetworkError, type ApiUser } from '../lib/api';
+import { api, setAuthHeaders, ApiError, type AccountSettingsResponse, type ApiUser } from '../lib/api';
 import { isValidThaiMobile, normalizePhone } from '../lib/calc';
 import { setHistoryScope } from '../lib/chatHistory';
 
@@ -19,11 +19,11 @@ export type ConsentFlags = {
 };
 
 export const DEFAULT_CONSENT: ConsentFlags = {
-  analytics: true,
-  improveModel: true,
+  analytics: false,
+  improveModel: false,
   marketing: false,
-  shareAnonymised: true,
-  locationAlerts: true,
+  shareAnonymised: false,
+  locationAlerts: false,
 };
 
 type AuthState = {
@@ -37,10 +37,7 @@ type AuthState = {
 
   requestOtp: (phone: string) => Promise<void>;
   verifyOtp: (code: string) => Promise<ApiUser>;
-  socialLogin: (
-    provider: 'google' | 'line',
-    details?: { email?: string; name?: string; avatar?: string },
-  ) => Promise<ApiUser>;
+  socialLogin: (provider: 'google' | 'line') => Promise<ApiUser>;
   loginWithPassword: (identifier: string, password?: string) => Promise<ApiUser>;
   register: (data: {
     name: string;
@@ -51,7 +48,9 @@ type AuthState = {
     cultivar?: string;
     plotSize?: string;
   }) => Promise<ApiUser>;
-  setConsent: (next: Partial<ConsentFlags>) => void;
+  refreshAccount: () => Promise<AccountSettingsResponse>;
+  saveProfile: (next: { name?: string; organization?: string; province?: string; plotSize?: string }) => Promise<ApiUser>;
+  setConsent: (next: Partial<ConsentFlags>) => Promise<void>;
   clearError: () => void;
   signOut: () => void;
 };
@@ -107,13 +106,6 @@ export const useAuth = create<AuthState>()(
             status: 'idle',
           });
         } catch (error) {
-          if (error instanceof ApiError && error.status === 502) {
-            set({
-              pendingOtp: { sessionToken: `demo-sess-${Date.now()}`, phone: digits, demoCode: '123456' },
-              status: 'idle',
-            });
-            return;
-          }
           set({ status: 'idle', error: error instanceof Error ? error.message : 'ส่งรหัส OTP ไม่สำเร็จ' });
           throw error;
         }
@@ -128,30 +120,13 @@ export const useAuth = create<AuthState>()(
 
         set({ status: 'loading', error: null });
         try {
-          let result: { token: string; user: ApiUser };
-          try {
-            result = await api.verifyOtp({
-              sessionToken: pending.sessionToken,
-              code,
-              phone: pending.phone,
-            });
-          } catch (apiErr) {
-            const isOffline = apiErr instanceof ApiError && apiErr.status === 502;
-            if (isOffline && (code === '123456' || code === pending.demoCode)) {
-              const fallbackUser: ApiUser = {
-                id: `usr-otp-${Date.now()}`,
-                name: `เกษตรกร (${pending.phone.slice(-4)})`,
-                phone: pending.phone,
-                role: 'user',
-                organization: 'Watermelon Smart Farm',
-              };
-              result = { token: `demo-token-${Date.now()}`, user: fallbackUser };
-            } else {
-              throw apiErr;
-            }
-          }
+          const result = await api.verifyOtp({
+            sessionToken: pending.sessionToken,
+            code,
+            phone: pending.phone,
+          });
           applyHeaders(result.user, result.token);
-          set({ user: result.user, token: result.token, pendingOtp: null, status: 'idle' });
+          set({ user: result.user, token: result.token, consent: DEFAULT_CONSENT, pendingOtp: null, status: 'idle' });
           return result.user;
         } catch (error) {
           set({ status: 'idle', error: error instanceof Error ? error.message : 'ยืนยันรหัสไม่สำเร็จ' });
@@ -159,14 +134,11 @@ export const useAuth = create<AuthState>()(
         }
       },
 
-      async socialLogin(provider, details) {
+      async socialLogin(provider) {
         set({ status: 'loading', error: null });
         try {
-          let email: string | undefined = details?.email;
-          let name: string | undefined = details?.name;
-          let avatar: string | undefined = details?.avatar;
-
-          if (!email && provider === 'google' && typeof window !== 'undefined') {
+          let idToken: string | undefined;
+          if (provider === 'google' && typeof window !== 'undefined') {
             try {
               // Imported here rather than at the top of the file: the
               // Firebase SDK is the largest dependency in the bundle and
@@ -175,9 +147,7 @@ export const useAuth = create<AuthState>()(
               // whether or not they ever signed in with Google.
               const { loginWithFirebaseGoogle } = await import('../lib/firebase');
               const fbUser = await loginWithFirebaseGoogle();
-              email = fbUser.email ?? undefined;
-              name = fbUser.displayName ?? undefined;
-              avatar = fbUser.photoURL ?? undefined;
+              idToken = await fbUser.getIdToken();
             } catch (fbErr: any) {
               set({ status: 'idle' });
               if (fbErr?.code === 'auth/popup-closed-by-user' || fbErr?.code === 'auth/cancelled-popup-request') {
@@ -187,29 +157,10 @@ export const useAuth = create<AuthState>()(
               throw fbErr;
             }
           }
-
-          let result: { token: string; user: ApiUser };
-          try {
-            result = await api.socialLogin({ provider, email, name, avatar });
-          } catch (apiErr) {
-            // When hosted statically on Firebase Hosting or when the backend API is unreachable,
-            // establish a valid client session for the authenticated identity so the user can access the app.
-            const userEmail = email || (provider === 'line' ? 'line.farmer@watermelon.ai' : 'hi00000087@gmail.com');
-            const fallbackUser: ApiUser = {
-              id: `usr-${provider}-${Date.now()}`,
-              name: name || userEmail.split('@')[0] || (provider === 'line' ? 'เกษตรกร LINE' : 'เกษตรกร Google'),
-              phone: '',
-              role: 'user',
-              email: userEmail,
-              avatar: avatar || (provider === 'google' ? 'https://lh3.googleusercontent.com/a/default-user' : undefined),
-              organization: 'Watermelon Smart Farm',
-            };
-            const fallbackToken = `token-${provider}-${Date.now()}`;
-            result = { token: fallbackToken, user: fallbackUser };
-          }
+          const result = await api.socialLogin({ provider, idToken });
 
           applyHeaders(result.user, result.token);
-          set({ user: result.user, token: result.token, status: 'idle' });
+          set({ user: result.user, token: result.token, consent: DEFAULT_CONSENT, status: 'idle' });
           return result.user;
         } catch (error) {
           set({ status: 'idle', error: error instanceof Error ? error.message : 'เข้าสู่ระบบไม่สำเร็จ' });
@@ -220,30 +171,9 @@ export const useAuth = create<AuthState>()(
       async loginWithPassword(identifier, password) {
         set({ status: 'loading', error: null });
         try {
-          let result: { token: string; user: ApiUser };
-          try {
-            result = await api.login({ identifier, password });
-          } catch (apiErr) {
-            const isOffline =
-              (apiErr instanceof ApiError && apiErr.status === 502) ||
-              apiErr instanceof NetworkError;
-            if (isOffline && identifier?.trim()) {
-              const isEmail = identifier.includes('@');
-              const fallbackUser: ApiUser = {
-                id: `usr-pw-${Date.now()}`,
-                name: isEmail ? identifier.split('@')[0] : `เกษตรกร (${identifier.slice(-4)})`,
-                phone: isEmail ? '' : identifier,
-                email: isEmail ? identifier : undefined,
-                role: 'user',
-                organization: 'Watermelon Smart Farm',
-              };
-              result = { token: `demo-token-${Date.now()}`, user: fallbackUser };
-            } else {
-              throw apiErr;
-            }
-          }
+          const result = await api.login({ identifier, password });
           applyHeaders(result.user, result.token);
-          set({ user: result.user, token: result.token, status: 'idle' });
+          set({ user: result.user, token: result.token, consent: DEFAULT_CONSENT, status: 'idle' });
           return result.user;
         } catch (error) {
           set({ status: 'idle', error: error instanceof Error ? error.message : 'เข้าสู่ระบบไม่สำเร็จ' });
@@ -254,29 +184,9 @@ export const useAuth = create<AuthState>()(
       async register(data) {
         set({ status: 'loading', error: null });
         try {
-          let result: { token: string; user: ApiUser };
-          try {
-            result = await api.register(data);
-          } catch (apiErr) {
-            const isOffline =
-              (apiErr instanceof ApiError && apiErr.status === 502) ||
-              apiErr instanceof NetworkError;
-            if (isOffline) {
-              const fallbackUser: ApiUser = {
-                id: `usr-reg-${Date.now()}`,
-                name: data.name || 'เกษตรกร',
-                phone: data.phone,
-                email: data.email,
-                role: 'user',
-                organization: 'Watermelon Smart Farm',
-              };
-              result = { token: `demo-token-${Date.now()}`, user: fallbackUser };
-            } else {
-              throw apiErr;
-            }
-          }
+          const result = await api.register(data);
           applyHeaders(result.user, result.token);
-          set({ user: result.user, token: result.token, status: 'idle' });
+          set({ user: result.user, token: result.token, consent: DEFAULT_CONSENT, status: 'idle' });
           return result.user;
         } catch (error) {
           set({ status: 'idle', error: error instanceof Error ? error.message : 'สมัครสมาชิกไม่สำเร็จ' });
@@ -284,27 +194,52 @@ export const useAuth = create<AuthState>()(
         }
       },
 
-      setConsent(next) {
-        const consent = { ...get().consent, ...next };
-        set({ consent });
-        // Consent is stored per account, so there is nothing to sync while
-        // signed out; posting anyway produced a guaranteed 401 on every
-        // toggle. The preference still applies locally either way.
-        if (!get().token) return;
-        void api.updateConsent(consent).catch(() => undefined);
+      async refreshAccount() {
+        if (!get().token || !get().user) throw new Error('กรุณาเข้าสู่ระบบก่อนจัดการบัญชี');
+        try {
+          const result = await api.accountSettings();
+          set({ user: result.user, consent: result.consent, error: null });
+          return result;
+        } catch (error) {
+          if (error instanceof ApiError && (error.status === 401 || error.status === 404)) {
+            get().signOut();
+          }
+          set({ error: error instanceof Error ? error.message : 'โหลดข้อมูลบัญชีไม่สำเร็จ' });
+          throw error;
+        }
+      },
+
+      async saveProfile(next) {
+        if (!get().token || !get().user) throw new Error('กรุณาเข้าสู่ระบบก่อนแก้ไขโปรไฟล์');
+        const result = await api.updateProfile(next);
+        set({ user: result.user, error: null });
+        return result.user;
+      },
+
+      async setConsent(next) {
+        if (!get().token || !get().user) throw new Error('กรุณาเข้าสู่ระบบก่อนตั้งค่าความยินยอม');
+        const result = await api.updateConsent(next);
+        set({ consent: result.consent, error: null });
       },
 
       clearError: () => set({ error: null }),
 
       signOut() {
         applyHeaders(null, null);
-        set({ user: null, token: null, pendingOtp: null, error: null });
+        set({ user: null, token: null, consent: DEFAULT_CONSENT, pendingOtp: null, error: null });
       },
     }),
     {
       name: 'watermelon-auth',
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ user: state.user, token: state.token, consent: state.consent }),
+      version: 2,
+      migrate: (persisted) => {
+        const previous = persisted as Partial<AuthState>;
+        // Old builds persisted consent flags shared across accounts, including
+        // a true-by-default model-training flag. The server is now the source.
+        return { user: previous.user ?? null, token: previous.token ?? null } as AuthState;
+      },
+      partialize: (state) => ({ user: state.user, token: state.token }),
       onRehydrateStorage: () => (state) => {
         if (state) applyHeaders(state.user, state.token);
       },

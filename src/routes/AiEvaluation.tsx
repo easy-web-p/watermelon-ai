@@ -5,10 +5,15 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
 import { Meter } from '../components/ui/Meter';
-import { Link, useRouter } from '../lib/router';
+import { useRouter } from '../lib/router';
 import { cn } from '../lib/cn';
+import { MODEL_CLASSES, MODEL_CLASS_THAI, MODEL_METRICS, MODEL_SUMMARY } from '../lib/diseaseModel';
+import rawMetrics from '../../fastapi_service/metrics.json';
+import wide9Meta from '../../fastapi_service/melon_m0.labels.json';
+import wide11Meta from '../../fastapi_service/melon_pv0.labels.json';
+import baseline9Meta from '../../fastapi_service/watermelon_cls.labels.json';
 
-type EngineKey = 'all' | 'legacy4' | 'wide9' | 'claude';
+type EngineKey = 'all' | 'legacy4';
 
 type ClassMetric = {
   nameTh: string;
@@ -17,72 +22,78 @@ type ClassMetric = {
   recall: number;
   f1: number;
   samples: number;
-  engine: 'legacy4' | 'wide9';
+  engine: 'legacy4';
 };
 
-const CLASS_METRICS: readonly ClassMetric[] = [
-  {
-    nameTh: 'แอนแทรคโนส',
-    nameEn: 'Anthracnose',
-    precision: 93.8,
-    recall: 95.1,
-    f1: 0.944,
-    samples: 310,
-    engine: 'legacy4',
-  },
-  {
-    nameTh: 'ราน้ำค้าง',
-    nameEn: 'Downy Mildew',
-    precision: 94.2,
-    recall: 92.6,
-    f1: 0.934,
-    samples: 295,
-    engine: 'legacy4',
-  },
-  {
-    nameTh: 'โรคยางไหลเถาแตก',
-    nameEn: 'Gummy Stem Blight',
-    precision: 91.5,
-    recall: 93.0,
-    f1: 0.922,
-    samples: 280,
-    engine: 'legacy4',
-  },
-  {
-    nameTh: 'ใบสมบูรณ์แข็งแรง',
-    nameEn: 'Healthy Leaf',
-    precision: 97.4,
-    recall: 96.8,
-    f1: 0.971,
-    samples: 315,
-    engine: 'legacy4',
-  },
-  {
-    nameTh: 'ราแป้ง',
-    nameEn: 'Powdery Mildew',
-    precision: 92.1,
-    recall: 90.5,
-    f1: 0.913,
-    samples: 190,
-    engine: 'wide9',
-  },
-  {
-    nameTh: 'ใบด่างแตงโม (ไวรัส)',
-    nameEn: 'Mosaic Virus',
-    precision: 89.2,
-    recall: 88.0,
-    f1: 0.886,
-    samples: 165,
-    engine: 'wide9',
-  },
-];
+const CLASS_METRICS: readonly ClassMetric[] = MODEL_CLASSES.map((modelClass) => ({
+  nameTh: MODEL_CLASS_THAI[modelClass],
+  nameEn: modelClass,
+  precision: MODEL_METRICS[modelClass].precision * 100,
+  recall: MODEL_METRICS[modelClass].recall * 100,
+  f1: MODEL_METRICS[modelClass].f1,
+  samples: MODEL_METRICS[modelClass].support,
+  engine: 'legacy4',
+}));
 
-const CONFUSION_MATRIX = [
-  { actual: 'แอนแทรคโนส', predAnthracnose: 95.1, predDowny: 2.1, predGummy: 1.8, predHealthy: 1.0 },
-  { actual: 'ราน้ำค้าง', predAnthracnose: 3.2, predDowny: 92.6, predGummy: 2.8, predHealthy: 1.4 },
-  { actual: 'ยางไหลเถาแตก', predAnthracnose: 2.5, predDowny: 3.0, predGummy: 93.0, predHealthy: 1.5 },
-  { actual: 'ใบปกติแข็งแรง', predAnthracnose: 0.8, predDowny: 1.2, predGummy: 1.2, predHealthy: 96.8 },
-];
+/** Use the measured counts directly, in the model's documented class order. */
+const CONFUSION_MATRIX = rawMetrics.test.confusion_matrix;
+
+const LOCAL_ONNX_ARTIFACTS = [
+  'model.onnx',
+  'melon_m0.onnx',
+  'melon_e1.onnx',
+  'wide9.onnx',
+  'melon_pv0.onnx',
+  'watermelon_cls.onnx',
+] as const;
+
+const MODEL_INVENTORY = [
+  {
+    id: 'legacy4',
+    title: 'Legacy-4 · EfficientNet-B0',
+    kind: 'โมเดลหลัก · ONNX',
+    scope: '4 คลาสจากภาพใบแตงโมโดยตรง',
+    evidence: `Accuracy ${(MODEL_SUMMARY.accuracy * 100).toFixed(1)}% · Macro F1 ${MODEL_SUMMARY.macroF1.toFixed(3)} · ชุดทดสอบ ${MODEL_SUMMARY.testImages} ภาพ`,
+    limit: 'ยังไม่มี calibration.json และยังไม่มีผลทดสอบภาคสนามอิสระ ตรวจโรคนอก 4 คลาสไม่ได้',
+    tone: 'primary' as const,
+  },
+  {
+    id: 'wide9',
+    title: 'Wide-9 · Ensemble 3 น้ำหนัก',
+    kind: 'โมเดลเสริม · ONNX',
+    scope: '9 คลาส รวมราแป้ง; ใช้ MobileNetV3-Large และ EfficientNet-B0 ร่วมกัน',
+    evidence: `Validation ${(wide9Meta.val_accuracy * 100).toFixed(1)}% · ECE ${wide9Meta.val_ece.toFixed(4)} · ${wide9Meta.train_images.toLocaleString('th-TH')} ภาพฝึก`,
+    limit: 'ชุด validation เป็นภาพพืชอื่น/ภาพตัวแทนข้ามพืช ไม่ใช่ภาพแปลงแตงโม คะแนนจึงเป็นข้อสังเกต ไม่ใช่คำวินิจฉัย',
+    tone: 'secondary' as const,
+  },
+  {
+    id: 'wide11',
+    title: 'Wide-11 · รุ่นทดลอง',
+    kind: 'โมเดลเสริม · ONNX',
+    scope: '11 คลาส เพิ่มไรแดงและโรคใบจุดวงแหวน',
+    evidence: `Validation ${(wide11Meta.val_accuracy * 100).toFixed(1)}% · ECE ${wide11Meta.val_ece.toFixed(4)} · ${wide11Meta.train_images.toLocaleString('th-TH')} ภาพฝึก`,
+    limit: 'ตัวเลขมาจากชุดข้อมูล mapped ข้ามพืช ไม่ใช่การทดสอบภาคสนามบนแตงโม ใช้เปรียบเทียบเท่านั้น',
+    tone: 'tertiary' as const,
+  },
+  {
+    id: 'baseline9',
+    title: 'Baseline-9 · MobileNetV3-Large',
+    kind: 'รุ่นเทียบเคียง · ONNX',
+    scope: '9 คลาส เก็บไว้เปรียบเทียบพัฒนาการของ Wide-9',
+    evidence: `Validation ${(baseline9Meta.val_accuracy * 100).toFixed(1)}% · ${baseline9Meta.train_images.toLocaleString('th-TH')} ภาพฝึก`,
+    limit: 'ผลต่ำกว่ารุ่น Wide-9 และไม่มีผลทดสอบบนแปลงแตงโม ห้ามใช้เป็นผลหลักหรือเลือกสารเคมี',
+    tone: 'neutral' as const,
+  },
+  {
+    id: 'claude',
+    title: 'Claude Vision · Multimodal LLM',
+    kind: 'บริการภายนอก · เปิดแบบ opt-in',
+    scope: 'อ่านภาพเชิงบรรยายและเลือกจากรายการโรคที่ระบบส่งให้',
+    evidence: 'ยังไม่มี benchmark ของโครงการบนภาพแตงโม',
+    limit: 'มีค่าใช้จ่าย ช้ากว่าโมเดลในเครื่อง และ confidence ไม่ใช่ความน่าจะเป็นที่ปรับเทียบแล้ว',
+    tone: 'outline' as const,
+  },
+] as const;
 
 export function AiEvaluation() {
   const [selectedEngine, setSelectedEngine] = useState<EngineKey>('all');
@@ -109,14 +120,13 @@ export function AiEvaluation() {
                   <Icon name="verified" size={14} />
                   การประเมินผล AI ทางวิชาการ
                 </Badge>
-                <Badge tone="outline">เกณฑ์ทดสอบภาคสนาม 2569</Badge>
+                <Badge tone="outline">ทะเบียน 6 น้ำหนัก ONNX · 5 เส้นทาง Vision</Badge>
               </div>
               <h1 className="mt-3 text-headline-lg font-bold text-on-surface lg:text-display-lg">
                 ตัววัดผลและรายงานประสิทธิภาพ AI
               </h1>
               <p className="mt-3 max-w-2xl text-body-lg text-on-surface-variant">
-                ระบบรายงานดัชนีชี้วัดทางสถิติ (Accuracy, Macro F1, Calibration ECE, และ Confusion Matrix)
-                ที่ผ่านการทดสอบบนภาพถ่ายใบแตงโมจริง 1,200 ตัวอย่างในแปลงเกษตรกรไทย เพื่อความโปร่งใสและตรวจสอบได้จริง
+                รวมโมเดลภาพ โมเดลภาษา ตัวกรองคุณภาพภาพ และระบบวัดเสียงที่พัฒนาหรือผนวกเข้ากับโครงการ โดยแยกผลวัดตามชุดข้อมูลของแต่ละรุ่น ไม่ยืมตัวเลขจากโมเดลหนึ่งไปอ้างกับอีกโมเดล และยังไม่มีรุ่นใดผ่านการทดสอบภาคสนามอิสระในสวนแตงโม
               </p>
             </div>
 
@@ -133,49 +143,35 @@ export function AiEvaluation() {
           </div>
 
           {/* KPI Dashboard Cards */}
-          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {[
               {
-                title: 'Overall Accuracy',
-                sub: 'ความแม่นยำรวม',
-                value: '94.2%',
+                title: 'Local Weights',
+                sub: 'ไฟล์น้ำหนัก ONNX ในโครงการ',
+                value: String(LOCAL_ONNX_ARTIFACTS.length),
                 tone: 'text-secondary',
-                icon: 'check_circle',
+                icon: 'memory',
               },
               {
-                title: 'Macro F1-Score',
-                sub: 'สมดุล Precision-Recall',
-                value: '0.931',
+                title: 'Vision Engines',
+                sub: 'รวมตัวเลือกภายนอกแบบ opt-in',
+                value: String(MODEL_INVENTORY.length),
                 tone: 'text-primary',
-                icon: 'balance',
+                icon: 'account_tree',
               },
               {
-                title: 'ECE Calibration',
-                sub: 'ความคลาดเคลื่อนสอบเทียบ',
-                value: '0.042',
+                title: 'Legacy Test',
+                sub: 'ภาพใบแตงโมชุดทดสอบภายใน',
+                value: String(MODEL_SUMMARY.testImages),
                 tone: 'text-tertiary',
-                icon: 'tune',
+                icon: 'image',
               },
               {
-                title: 'Inference Latency',
-                sub: 'ความเร็วประมวลผล',
-                value: '82 ms',
-                tone: 'text-secondary',
-                icon: 'speed',
-              },
-              {
-                title: 'LeafCheck Quality',
-                sub: 'กรองภาพที่ไม่ใช่ใบ',
-                value: '98.4%',
-                tone: 'text-primary',
-                icon: 'filter_alt',
-              },
-              {
-                title: 'Acoustic R² Score',
-                sub: 'สหสัมพันธ์ความหวาน',
-                value: '0.84',
+                title: 'Field Validation',
+                sub: 'ชุดทดสอบสวนอิสระที่ยืนยันแล้ว',
+                value: '0',
                 tone: 'text-tertiary',
-                icon: 'graphic_eq',
+                icon: 'science',
               },
             ].map((kpi) => (
               <div
@@ -196,6 +192,35 @@ export function AiEvaluation() {
 
       {/* Main Content Tabs */}
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-12">
+        <Card className="mb-6">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-title-lg font-bold text-on-surface">
+                <Icon name="deployed_code" size={22} className="text-primary" />
+                ทะเบียนโมเดลและระบบวิเคราะห์ทั้งหมด
+              </h2>
+              <p className="mt-1 max-w-3xl text-body-sm text-on-surface-variant">
+                คำว่า “Validation” ในการ์ด Wide และ Baseline หมายถึงชุดตรวจสอบของข้อมูล mapped ข้ามพืช ไม่ใช่ผลแม่นยำบนใบแตงโมจริง ส่วนตัวเลข Legacy-4 มาจากชุดทดสอบภายใน 173 ภาพของแหล่งข้อมูลเดียวกับชุดฝึก
+              </p>
+            </div>
+            <Badge tone="outline">ค่าเริ่มต้น: legacy4</Badge>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {MODEL_INVENTORY.map((model) => (
+              <article key={model.id} className="rounded-xl border border-outline-variant/35 bg-surface-lowest p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <h3 className="text-title-sm font-bold text-on-surface">{model.title}</h3>
+                  <Badge tone={model.tone}>{model.kind}</Badge>
+                </div>
+                <p className="mt-3 text-body-sm font-medium text-on-surface">{model.scope}</p>
+                <p className="mt-2 text-caption text-secondary">หลักฐาน: {model.evidence}</p>
+                <p className="mt-2 text-caption leading-relaxed text-on-surface-variant">ข้อจำกัด: {model.limit}</p>
+              </article>
+            ))}
+          </div>
+        </Card>
+
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/20 pb-4">
           <div className="flex flex-wrap gap-2">
             {[
@@ -223,7 +248,7 @@ export function AiEvaluation() {
 
           <div className="flex items-center gap-2 text-caption text-on-surface-variant">
             <Icon name="info" size={16} />
-            <span>ชุดทดสอบอิสระ 1,200 ภาพ (N=1,200) ไม่เคยใช้ในขั้นตอน Train</span>
+            <span>{MODEL_SUMMARY.provenance}</span>
           </div>
         </div>
 
@@ -245,7 +270,7 @@ export function AiEvaluation() {
                 {/* Filter Engine */}
                 <div className="flex items-center gap-2">
                   <span className="text-caption text-on-surface-variant">กรองโมเดล:</span>
-                  {(['all', 'legacy4', 'wide9'] as const).map((eng) => (
+                  {(['all', 'legacy4'] as const).map((eng) => (
                     <button
                       key={eng}
                       type="button"
@@ -257,7 +282,7 @@ export function AiEvaluation() {
                           : 'bg-surface-lowest text-on-surface-variant hover:bg-surface-container',
                       )}
                     >
-                      {eng === 'all' ? 'ทั้งหมด' : eng === 'legacy4' ? 'Legacy-4' : 'Wide-9'}
+                      {eng === 'all' ? 'ทั้งหมด' : 'Legacy-4'}
                     </button>
                   ))}
                 </div>
@@ -285,12 +310,12 @@ export function AiEvaluation() {
                         </td>
                         <td className="py-3.5 px-4">
                           <Badge tone={row.engine === 'legacy4' ? 'primary' : 'secondary'} className="text-[10px]">
-                            {row.engine === 'legacy4' ? 'Legacy-4 (ปรับเทียบ)' : 'Wide-9 (คะแนนดิบ)'}
+                            Legacy-4 (ยังไม่ปรับเทียบ)
                           </Badge>
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono text-on-surface-variant">{row.samples}</td>
-                        <td className="py-3.5 px-4 text-right font-mono font-bold text-on-surface">{row.precision}%</td>
-                        <td className="py-3.5 px-4 text-right font-mono font-bold text-on-surface">{row.recall}%</td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-on-surface">{row.precision.toFixed(1)}%</td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-on-surface">{row.recall.toFixed(1)}%</td>
                         <td className="py-3.5 px-4 text-right font-mono font-bold text-primary">{row.f1.toFixed(3)}</td>
                         <td className="py-3.5 px-4">
                           <Meter value={row.precision} tone={row.precision >= 93 ? 'secondary' : 'primary'} label={row.nameTh} />
@@ -299,87 +324,6 @@ export function AiEvaluation() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            </Card>
-
-            {/* Comparison of the 3 engines */}
-            <Card>
-              <h3 className="text-title-md font-bold text-on-surface mb-3 flex items-center gap-2">
-                <Icon name="compare" size={20} className="text-secondary" />
-                ตารางเปรียบเทียบสถาปัตยกรรม 3 เครื่องยนต์ AI
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="rounded-xl border border-secondary/30 bg-surface-lowest p-4 relative">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-secondary text-title-sm">1. Legacy-4 (ตัวหลัก)</span>
-                    <Badge tone="secondary">ปรับเทียบความมั่นใจแล้ว</Badge>
-                  </div>
-                  <p className="text-caption text-on-surface-variant mb-3">
-                    สถาปัตยกรรม CNN + Test-Time Augmentation (TTA) ฝึกและวัดผลบนภาพใบแตงโมไทยจริง
-                  </p>
-                  <ul className="text-[12px] space-y-1.5 text-on-surface-variant">
-                    <li className="flex items-center gap-1.5 text-on-surface">
-                      <Icon name="check" size={14} className="text-secondary" />
-                      ความครอบคลุม 4 คลาสหลัก (แอนแทรคโนส, ราน้ำค้าง, ยางไหล, ใบปกติ)
-                    </li>
-                    <li className="flex items-center gap-1.5 text-on-surface">
-                      <Icon name="check" size={14} className="text-secondary" />
-                      มีแผนรักษา สารออกฤทธิ์ FRAC และค่า PHI ปลอดภัย
-                    </li>
-                    <li className="flex items-center gap-1.5 text-on-surface-variant">
-                      <Icon name="remove" size={14} />
-                      จำกัดที่ 4 คลาสหลัก (ไม่ตรวจราแป้ง)
-                    </li>
-                  </ul>
-                </div>
-
-                <div className="rounded-xl border border-outline-variant/40 bg-surface-lowest p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-on-surface text-title-sm">2. Wide-9 (โมเดลเสริม)</span>
-                    <Badge tone="neutral">ยังไม่ปรับเทียบ (คะแนนดิบ)</Badge>
-                  </div>
-                  <p className="text-caption text-on-surface-variant mb-3">
-                    โมเดล ONNX 9 คลาส ตรวจจับโรคในวงศ์แตงได้กว้างขึ้น
-                  </p>
-                  <ul className="text-[12px] space-y-1.5 text-on-surface-variant">
-                    <li className="flex items-center gap-1.5 text-on-surface">
-                      <Icon name="check" size={14} className="text-secondary" />
-                      ตรวจพบ <strong>โรคราแป้ง (Powdery Mildew)</strong> เพิ่มเติมได้
-                    </li>
-                    <li className="flex items-center gap-1.5 text-on-surface-variant">
-                      <Icon name="warning" size={14} className="text-primary" />
-                      ห้ามตีความความมั่นใจเป็นความน่าจะเป็นทางสถิติ
-                    </li>
-                    <li className="flex items-center gap-1.5 text-on-surface-variant">
-                      <Icon name="remove" size={14} />
-                      ไม่มีแผนการรักษาและค่า PHI รองรับ
-                    </li>
-                  </ul>
-                </div>
-
-                <div className="rounded-xl border border-outline-variant/40 bg-surface-lowest p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-primary text-title-sm">3. Claude Vision (LLM)</span>
-                    <Badge tone="outline">วิเคราะห์เชิงบรรยาย</Badge>
-                  </div>
-                  <p className="text-caption text-on-surface-variant mb-3">
-                    โมเดล Multimodal Vision วิเคราะห์ลักษณะแผลนอกรายการคลาส
-                  </p>
-                  <ul className="text-[12px] space-y-1.5 text-on-surface-variant">
-                    <li className="flex items-center gap-1.5 text-on-surface">
-                      <Icon name="check" size={14} className="text-secondary" />
-                      อธิบายเหตุผลและสังเกตอาการผิดปกติซับซ้อนได้
-                    </li>
-                    <li className="flex items-center gap-1.5 text-on-surface-variant">
-                      <Icon name="warning" size={14} className="text-primary" />
-                      เวลาประมวลผลนานกว่า (~3-10 วินาที)
-                    </li>
-                    <li className="flex items-center gap-1.5 text-on-surface-variant">
-                      <Icon name="remove" size={14} />
-                      ไม่นำตัวเลขความแม่นยำมาเทียบกับโมเดลจำแนก
-                    </li>
-                  </ul>
-                </div>
               </div>
             </Card>
           </div>
@@ -394,7 +338,7 @@ export function AiEvaluation() {
                 Confusion Matrix Heatmap (ตารางความสัมพันธ์ผลทำนาย)
               </h2>
               <p className="text-body-sm text-on-surface-variant mt-1">
-                แกนตั้งคือชั้นโรคที่เป็นจริง (Ground Truth) และแกนนอนคือผลที่โมเดล Legacy-4 ทำนายออกมา (Normalized %)
+                แกนตั้งคือคลาสจริง แกนนอนคือผลทำนายของ Legacy-4 ตัวเลขเป็นจำนวนภาพจากชุดทดสอบ 173 ภาพ
               </p>
             </div>
 
@@ -405,26 +349,19 @@ export function AiEvaluation() {
                     <th className="p-3 text-caption text-on-surface-variant text-left bg-surface-low">ชั้นโรคที่เป็นจริง \ ทาย</th>
                     <th className="p-3 text-caption font-bold text-on-surface bg-surface-container/50">ทาย: แอนแทรคโนส</th>
                     <th className="p-3 text-caption font-bold text-on-surface bg-surface-container/50">ทาย: ราน้ำค้าง</th>
-                    <th className="p-3 text-caption font-bold text-on-surface bg-surface-container/50">ทาย: ยางไหล</th>
                     <th className="p-3 text-caption font-bold text-on-surface bg-surface-container/50">ทาย: ปกติแข็งแรง</th>
+                    <th className="p-3 text-caption font-bold text-on-surface bg-surface-container/50">ทาย: ไวรัสใบด่าง</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/20 font-mono text-body-sm">
-                  {CONFUSION_MATRIX.map((row) => (
-                    <tr key={row.actual} className="divide-x divide-outline-variant/20">
-                      <td className="p-3.5 text-left font-bold font-sans text-on-surface bg-surface-low">{row.actual}</td>
-                      <td className={cn('p-3.5', row.predAnthracnose > 50 ? 'bg-secondary/20 text-secondary font-bold' : 'text-on-surface-variant')}>
-                        {row.predAnthracnose}%
-                      </td>
-                      <td className={cn('p-3.5', row.predDowny > 50 ? 'bg-secondary/20 text-secondary font-bold' : 'text-on-surface-variant')}>
-                        {row.predDowny}%
-                      </td>
-                      <td className={cn('p-3.5', row.predGummy > 50 ? 'bg-secondary/20 text-secondary font-bold' : 'text-on-surface-variant')}>
-                        {row.predGummy}%
-                      </td>
-                      <td className={cn('p-3.5', row.predHealthy > 50 ? 'bg-secondary/20 text-secondary font-bold' : 'text-on-surface-variant')}>
-                        {row.predHealthy}%
-                      </td>
+                  {CONFUSION_MATRIX.map((row, rowIndex) => (
+                    <tr key={MODEL_CLASSES[rowIndex]} className="divide-x divide-outline-variant/20">
+                      <td className="p-3.5 text-left font-bold font-sans text-on-surface bg-surface-low">{MODEL_CLASS_THAI[MODEL_CLASSES[rowIndex]]}</td>
+                      {row.map((count, columnIndex) => (
+                        <td key={MODEL_CLASSES[columnIndex]} className={cn('p-3.5', rowIndex === columnIndex ? 'bg-secondary/20 text-secondary font-bold' : 'text-on-surface-variant')}>
+                          {count}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
@@ -433,8 +370,8 @@ export function AiEvaluation() {
 
             <div className="rounded-lg bg-surface-low p-4 text-caption text-on-surface-variant space-y-1">
               <p className="font-semibold text-on-surface">ข้อสังเกตจากการทดสอบ:</p>
-              <p>• เส้นทแยงมุมสีเขียวเข้มแสดงสัดส่วนที่โมเดลทำนายได้ถูกต้อง (True Positives สูงกว่า 92% ทุกคลาส)</p>
-              <p>• สับสนระหว่างแอนแทรคโนสและราน้ำค้างเพียง 2-3% ในกรณีที่แผลบนใบยังอยู่ในระยะตั้งต้น (แผลจุดเล็กคล้ายกัน)</p>
+              <p>• ช่องทแยงสีเขียวคือภาพที่ทำนายตรงคลาสจริง</p>
+              <p>• ในชุดทดสอบนี้ ราน้ำค้าง 10 ภาพและไวรัสใบด่าง 9 ภาพถูกทำนายเป็นใบปกติ จึงไม่ควรใช้ผล “ปกติ” ยืนยันว่าไม่มีโรค</p>
             </div>
           </Card>
         )}
@@ -448,7 +385,7 @@ export function AiEvaluation() {
                 การประเมินผลการตรวจวัดคลื่นเสียงเคาะความหวาน (Acoustic Brix Model)
               </h2>
               <p className="text-body-sm text-on-surface-variant mt-1">
-                การวิเคราะห์ Fast Fourier Transform (FFT) ความถี่เรโซแนนซ์ 120–180 Hz เทียบกับค่าความหวานจริง (Brix)
+                ยังไม่มีโมเดลเสียงเคาะที่ผ่านการสอบเทียบกับค่าความหวาน Brix จริง ระบบจึงไม่รายงานความสุกจากเสียง
               </p>
             </div>
 
@@ -457,23 +394,22 @@ export function AiEvaluation() {
                 <div className="rounded-xl border border-outline-variant/30 bg-surface-lowest p-4">
                   <span className="text-caption text-on-surface-variant">สหสัมพันธ์เชิงเส้น (Correlation Coefficient)</span>
                   <div className="flex items-baseline gap-2 mt-1">
-                    <p className="text-display-sm font-bold text-tertiary">R² = 0.84</p>
-                    <span className="text-caption text-secondary font-semibold">(สหสัมพันธ์สูงมาก)</span>
+                    <p className="text-display-sm font-bold text-tertiary">ยังไม่มีผลวัด</p>
+                    <span className="text-caption text-secondary font-semibold">ไม่มีโมเดลที่ยืนยันได้</span>
                   </div>
                   <p className="text-caption text-on-surface-variant mt-2 leading-relaxed">
-                    พบว่าคลื่นเสียงเคาะที่มีความถี่พื้นฐาน (Fundamental Frequency) ลดต่ำลงและมีฮาร์มอนิกที่ก้องแน่น
-                    มีความสัมพันธ์โดยตรงกับระดับน้ำตาลและความหนาแน่นของเนื้อแตงโมที่สุกจัด
+                    ยังไม่มีชุดข้อมูลเสียงเคาะคู่กับผลวัด Brix จริงที่ใช้ยืนยันความสัมพันธ์นี้
                   </p>
                 </div>
 
                 <div className="rounded-xl border border-outline-variant/30 bg-surface-lowest p-4">
                   <span className="text-caption text-on-surface-variant">ความคลาดเคลื่อนเฉลี่ย (Mean Absolute Error)</span>
                   <div className="flex items-baseline gap-2 mt-1">
-                    <p className="text-display-sm font-bold text-on-surface">±0.68 °Bx</p>
+                    <p className="text-display-sm font-bold text-on-surface">ยังไม่มีผลวัด</p>
                     <span className="text-caption text-on-surface-variant">(องศาบริกซ์)</span>
                   </div>
                   <p className="text-caption text-on-surface-variant mt-2">
-                    แม่นยำเพียงพอสำหรับใช้คัดเกรดผลผลิตในแปลงก่อนเก็บเกี่ยวเพื่อส่งตลาดพรีเมียม
+                    ห้ามใช้เสียงเคาะจากระบบนี้ตัดสินใจเก็บเกี่ยวหรือคัดเกรดจนกว่าจะมีผลสอบเทียบจริง
                   </p>
                 </div>
               </div>
@@ -482,10 +418,7 @@ export function AiEvaluation() {
                 <h4 className="font-bold text-on-surface text-label-lg mb-3">ผลการทดสอบแยกตามสายพันธุ์การค้าไทย</h4>
                 <div className="space-y-3">
                   {[
-                    { breed: 'กินรี (Kinnaree)', acc: '92.4%', mae: '±0.62 °Bx', note: 'เสียงทึบแน่น ชัดเจนที่สุด' },
-                    { breed: 'ตอร์ปิโด (Torpedo)', acc: '90.1%', mae: '±0.71 °Bx', note: 'เนื้อแน่นกรอบ ค่าสเปกตรัมคงที่' },
-                    { breed: 'ซอนญ่า (Sonya)', acc: '88.9%', mae: '±0.75 °Bx', note: 'เปลือกบาง ต้องเคาะเบาเป็นพิเศษ' },
-                    { breed: 'เมล่อนซูโม่ (Melon Sumo)', acc: '87.5%', mae: '±0.78 °Bx', note: 'ลายตาข่ายดูดซับเสียงเล็กน้อย' },
+                    { breed: 'ยังไม่มีผลทดสอบแยกสายพันธุ์', acc: '—', mae: '—', note: 'ต้องเก็บเสียงและค่า Brix จริงของแต่ละผลก่อน' },
                   ].map((item) => (
                     <div key={item.breed} className="flex items-center justify-between p-2 rounded-lg bg-surface-low">
                       <div>
@@ -513,7 +446,7 @@ export function AiEvaluation() {
                 LeafCheck: ระบบตรวจสอบคุณภาพภาพก่อนเข้าโมเดล
               </h2>
               <p className="text-body-sm text-on-surface-variant mt-1">
-                อัลกอริทึมคัดกรองเบื้องต้นเพื่อปฏิเสธภาพที่ไม่ใช่ใบแตงโม ภาพเบลอ หรือภาพที่แสงจ้าผิดปกติ
+                ตัวกรองคุณภาพภาพเป็นกฎเชิงภาพเบื้องต้น ยังไม่มีผลทดสอบความแม่นยำที่แยกตรวจอิสระ และไม่ยืนยันชนิดพืช
               </p>
             </div>
 
@@ -523,9 +456,9 @@ export function AiEvaluation() {
                   <Icon name="hide_image" size={20} />
                   <span>ตรวจจับภาพไม่ใช่ใบ</span>
                 </div>
-                <p className="text-display-sm font-bold text-on-surface my-2">99.1%</p>
+                <p className="text-display-sm font-bold text-on-surface my-2">ไม่มีผลวัด</p>
                 <p className="text-caption text-on-surface-variant">
-                  ปฏิเสธภาพสัตว์ สิ่งของ รองเท้า ดิน หรือภาพบุคคลอย่างแม่นยำ ป้องกันการวินิจฉัยผิดพลาด (False Positive)
+                  ตรวจสัดส่วนเนื้อใบโดยประมาณ แต่ยังแยกใบแตงโมจากพืชอื่นอย่างยืนยันไม่ได้
                 </p>
               </div>
 
@@ -534,9 +467,9 @@ export function AiEvaluation() {
                   <Icon name="blur_on" size={20} />
                   <span>ตรวจจับภาพเบลอ (Blurry)</span>
                 </div>
-                <p className="text-display-sm font-bold text-on-surface my-2">97.8%</p>
+                <p className="text-display-sm font-bold text-on-surface my-2">ไม่มีผลวัด</p>
                 <p className="text-caption text-on-surface-variant">
-                  คำนวณค่า Laplacian Variance หากต่ำกว่าเกณฑ์ความคมชัด ระบบจะแจ้งให้เกษตรกรถ่ายใหม่อัตโนมัติ
+                  ใช้เกณฑ์ความคมชัดเพื่อขอภาพใหม่เมื่ออ่านไม่ได้ แต่ยังไม่มีตัวเลขอัตราตรวจถูกต้อง
                 </p>
               </div>
 
@@ -545,9 +478,9 @@ export function AiEvaluation() {
                   <Icon name="brightness_medium" size={20} />
                   <span>ตรวจจับแสงสะท้อนจ้า</span>
                 </div>
-                <p className="text-display-sm font-bold text-on-surface my-2">96.5%</p>
+                <p className="text-display-sm font-bold text-on-surface my-2">ไม่มีผลวัด</p>
                 <p className="text-caption text-on-surface-variant">
-                  ตรวจจับพื้นที่แสงตกกระทบผิวใบ (Specular highlight) ที่บดบังเนื้อเยื่อจริง
+                  ประเมินความสว่างของภาพเบื้องต้น ยังไม่มีผลทดสอบประสิทธิภาพแยกต่างหาก
                 </p>
               </div>
             </div>

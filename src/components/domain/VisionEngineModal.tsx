@@ -59,11 +59,16 @@ export function VisionEngineModal({
               ข้อกำหนดความปลอดภัยของระบบเกษตรอัจฉริยะ:
             </p>
             <p>
-              โมเดลเริ่มต้นคือ <strong>Legacy 4</strong> ซึ่งผ่านการปรับเทียบความน่าจะเป็นบนภาพใบแตงโมจริง สำหรับเครื่องยนต์อื่นที่ยังไม่ปรับเทียบ ตัวเลขความมั่นใจเป็นคะแนนดิบเท่านั้น ไม่ถือเป็นความน่าจะเป็นจริง
+              โมเดลเริ่มต้นคือ <strong>Legacy 4</strong> แต่สถานะการปรับเทียบต้องดูจากข้อมูลเซอร์วิสด้านล่าง หากยังไม่ปรับเทียบ ตัวเลขความมั่นใจเป็นเพียงคะแนนโมเดล ไม่ใช่ความน่าจะเป็นจริง
             </p>
           </div>
 
           <div className="space-y-4">
+            {engines.length === 0 && (
+              <p role="status" className="text-body-sm text-error">
+                ยังโหลดรายการเครื่องยนต์ไม่ได้ กรุณาตรวจสอบบริการวิเคราะห์ภาพแล้วเปิดหน้านี้ใหม่
+              </p>
+            )}
             {engines.map((eng) => {
               const isSelected = selectedEngine === eng.name;
               return (
@@ -90,6 +95,7 @@ export function VisionEngineModal({
                           <Badge tone="neutral">ยังไม่ปรับเทียบ (คะแนนดิบ)</Badge>
                         )}
                         <Badge tone="outline">{eng.class_count > 0 ? `${eng.class_count} คลาส` : 'ไม่จำกัดคลาส'}</Badge>
+                        {eng.costs_money ? <Badge tone="outline">มีค่าใช้จ่ายต่อการเรียก</Badge> : null}
                       </div>
                       <p className="mt-1 text-body-sm text-on-surface-variant">
                         {eng.description_th}

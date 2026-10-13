@@ -65,6 +65,77 @@ export type KnockRecording = {
   levels: number[];
 };
 
+/** Decode the actual recording to mono float32 for the acoustic service. */
+export async function recordingToPcm(recording: KnockRecording): Promise<{ pcmBase64: string; sampleRate: number }> {
+  const separator = recording.dataUrl.indexOf(',');
+  if (!recording.dataUrl.startsWith('data:audio/') || separator < 0) {
+    throw new Error('ไฟล์เสียงไม่ถูกต้อง กรุณาอัดใหม่');
+  }
+  const binary = atob(recording.dataUrl.slice(separator + 1));
+  const encoded = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  const context = new AudioContext();
+  try {
+    const audio = await context.decodeAudioData(encoded.buffer);
+    if (audio.duration > 20 || audio.duration < 0.3) {
+      throw new Error('กรุณาอัดเสียงเคาะยาว 0.3–20 วินาที');
+    }
+    const bytes = new Uint8Array(audio.length * 4);
+    const view = new DataView(bytes.buffer);
+    const channels = Array.from({ length: audio.numberOfChannels }, (_, index) => audio.getChannelData(index));
+    for (let index = 0; index < audio.length; index += 1) {
+      let sample = 0;
+      for (const channel of channels) sample += channel[index];
+      view.setFloat32(index * 4, sample / channels.length, true);
+    }
+    let pcm = '';
+    for (let index = 0; index < bytes.length; index += 8192) {
+      pcm += String.fromCharCode(...bytes.subarray(index, index + 8192));
+    }
+    return { pcmBase64: btoa(pcm), sampleRate: audio.sampleRate };
+  } finally {
+    await context.close();
+  }
+}
+
+/** Encode the measured mono samples as PCM WAV for a fruit-specific training record. */
+export function pcmFloat32ToWavDataUrl(pcmBase64: string, sampleRate: number): string {
+  if (!Number.isInteger(sampleRate) || sampleRate < 8_000 || sampleRate > 192_000) {
+    throw new Error('อัตราสุ่มเสียงไม่ถูกต้อง');
+  }
+  const raw = atob(pcmBase64);
+  if (!raw.length || raw.length % 4 !== 0) throw new Error('ข้อมูลเสียง PCM ไม่ถูกต้อง');
+  const sampleCount = raw.length / 4;
+  const bytes = new Uint8Array(44 + sampleCount * 2);
+  const view = new DataView(bytes.buffer);
+  const label = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i += 1) bytes[offset + i] = value.charCodeAt(i);
+  };
+  label(0, 'RIFF');
+  view.setUint32(4, bytes.length - 8, true);
+  label(8, 'WAVE');
+  label(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  label(36, 'data');
+  view.setUint32(40, sampleCount * 2, true);
+  const pcm = new DataView(Uint8Array.from(raw, (char) => char.charCodeAt(0)).buffer);
+  for (let index = 0; index < sampleCount; index += 1) {
+    const sample = Math.max(-1, Math.min(1, pcm.getFloat32(index * 4, true)));
+    if (!Number.isFinite(sample)) throw new Error('ข้อมูลเสียงมีค่าที่วัดไม่ได้');
+    view.setInt16(44 + index * 2, Math.round(sample * (sample < 0 ? 32768 : 32767)), true);
+  }
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 8192));
+  }
+  return `data:audio/wav;base64,${btoa(binary)}`;
+}
+
 /**
  * Microphone recorder for the knock test. Exposes a live level so the waveform
  * reacts to the actual taps instead of animating on a timer, which is what

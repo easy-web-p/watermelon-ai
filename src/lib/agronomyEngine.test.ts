@@ -23,7 +23,7 @@ describe('calculateAgronomyPlan', () => {
     expect(result.densityScore).toBeGreaterThanOrEqual(50);
   });
 
-  it('adjusts yield and Brix based on season and cultivar', () => {
+  it('does not invent Brix from season and cultivar', () => {
     const winterPlan = calculateAgronomyPlan({
       rai: 2,
       ngan: 0,
@@ -47,7 +47,8 @@ describe('calculateAgronomyPlan', () => {
     });
 
     expect(winterPlan.tonnesLow).toBeGreaterThan(rainyPlan.tonnesLow);
-    expect(winterPlan.expectedBrixLow).toBeGreaterThan(rainyPlan.expectedBrixLow);
+    expect(winterPlan.expectedBrixLow).toBeNull();
+    expect(rainyPlan.expectedBrixLow).toBeNull();
   });
 
   it('calculates fertilizer stages and water requirement correctly', () => {

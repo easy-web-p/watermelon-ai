@@ -51,15 +51,12 @@ const GROUPS: readonly Group[] = [
   {
     name: 'วิเคราะห์เสียงเคาะ',
     icon: 'graphic_eq',
-    // Documented as 503 because that is what they return: there is no
-    // acoustic or speech model deployed, and the endpoints refuse rather
-    // than return a plausible-looking frequency and Brix figure.
-    blurb: 'ยังไม่พร้อมใช้งาน — ยังไม่มีโมเดลวิเคราะห์คลื่นเสียงในระบบ',
+    blurb: 'วัดความถี่เสียงเคาะจริงด้วย FFT เมื่อบริการ Python ออนไลน์; ยังไม่มีโมเดลทำนายค่า Brix หรือถอดเสียงพูด',
     endpoints: [
-      { method: 'GET', path: '/watermelon/acoustic-model', summary: 'ตรวจสถานะโมเดลเสียง (เรียกก่อนเปิดปุ่มไมโครโฟน)', returns: '503 { success: false, online: false, error, code }' },
-      { method: 'POST', path: '/audio/knock-analysis', summary: 'วิเคราะห์คลื่นเสียงเคาะผล (ยังไม่พร้อมใช้งาน)', body: '{ fileData: string }', returns: '503 { error, code: "ACOUSTIC_SERVICE_UNAVAILABLE" }' },
+      { method: 'GET', path: '/watermelon/acoustic-model', summary: 'ตรวจสถานะระบบวัดเสียงและข้อจำกัด', returns: '{ success, online, reportsBrix: false, info }' },
+      { method: 'POST', path: '/audio/knock-analysis', summary: 'วัดคลื่นเสียงจากไฟล์ที่อัดจริง ไม่คืนค่า Brix', body: '{ pcmBase64, sampleRate, massKg? }', returns: '{ ok: true, method: "fft-resonance", reading }' },
       { method: 'POST', path: '/audio/transcriptions', summary: 'ถอดข้อความจากเสียงพูด (ยังไม่พร้อมใช้งาน)', body: '{ fileData: string }', returns: '503 { error, code: "TRANSCRIPTION_SERVICE_UNAVAILABLE" }' },
-      { method: 'GET', path: '/varieties', summary: 'เกณฑ์คลื่นเสียงรายสายพันธุ์', returns: 'ApiVariety[] { minRipeHz, maxRipeHz, targetBrix }' },
+      { method: 'GET', path: '/varieties', summary: 'เกณฑ์คลื่นเสียงรายสายพันธุ์เดิมที่ยกเลิกเพราะยังไม่ปรับเทียบ', returns: '410 CULTIVAR_CALIBRATION_UNAVAILABLE' },
     ],
   },
   {
@@ -83,7 +80,7 @@ const GROUPS: readonly Group[] = [
       { method: 'POST', path: '/auth/register', summary: 'สมัครสมาชิกเกษตรกรใหม่', body: '{ name, phone, password?, province?, cultivar? }', returns: '{ success, user, token }' },
       { method: 'POST', path: '/auth/otp/send', summary: 'ขอรหัส OTP (หมดอายุ 5 นาที)', body: '{ phone }', returns: '{ sessionToken, message, demoCode? }' },
       { method: 'POST', path: '/auth/otp/verify', summary: 'ยืนยันรหัส OTP (ลองได้ 5 ครั้ง)', body: '{ sessionToken, code, phone }', returns: '{ user, token }' },
-      { method: 'POST', path: '/auth/social', summary: 'เข้าสู่ระบบผ่าน Google / LINE Official', body: '{ provider, email?, name? }', returns: '{ user, token }' },
+      { method: 'POST', path: '/auth/social', summary: 'เข้าสู่ระบบ Google ด้วย Firebase ID token ที่เซิร์ฟเวอร์ตรวจลายเซ็น (LINE ยังไม่เปิด)', body: '{ provider: "google", idToken }', returns: '{ user, token }' },
       { method: 'GET', path: '/auth/me', summary: 'ตรวจสอบข้อมูลผู้ใช้ปัจจุบันจาก JWT Token', returns: '{ success, user, payload }' },
     ],
   },
@@ -151,7 +148,7 @@ export function ApiDocs() {
           </h1>
           <p className="mt-3 max-w-2xl text-body-lg text-on-surface-variant">
             เชื่อมระบบของคุณเข้ากับโมเดลวินิจฉัยโรคและวิเคราะห์ความหวานของ Watermelon AI
-            ใช้ได้กับแพ็กเกจวิสาหกิจชุมชนขึ้นไป
+            เปิดให้ใช้งานฟรี ไม่มีแพ็กเกจหรือค่าบริการ
           </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">

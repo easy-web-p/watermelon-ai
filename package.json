@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "dev:web": "vite",
+    "ai:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-ai.ps1",
     "build": "vite build",
     "start": "tsx server.ts",
     "preview": "vite preview",
@@ -17,14 +18,16 @@
     "cap:open:ios": "cap open ios"
   },
   "dependencies": {
+    "@ai-sdk/google": "^4.0.90",
+    "@ai-sdk/openai-compatible": "^3.0.65",
     "@capacitor/android": "^7.0.1",
     "@capacitor/cli": "^7.0.1",
     "@capacitor/core": "^7.0.1",
     "@capacitor/ios": "^7.0.1",
     "@google-cloud/firestore": "^9.3.1",
-    "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
+    "ai": "^7.0.131",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^12.19.0",

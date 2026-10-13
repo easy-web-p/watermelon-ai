@@ -110,7 +110,7 @@ export function CultivationGuide() {
             </Badge>
           }
           title="คู่มือปลูก & คำนวณแปลงอัจฉริยะ"
-          description="วางแผนการเพาะปลูก จำลองผลผลิตและต้นทุนจากปัจจัยแปลงจริง พร้อมไทม์ไลน์ 5 ระยะการเติบโตและตารางงานตลอดฤดูกาล"
+          description="คำนวณพื้นที่ปลูกและจำลองผลผลิต/ต้นทุนจากสมมติฐานตัวอย่างที่ยังไม่สอบเทียบกับแปลงจริง อย่าใช้ตัวเลขนี้ตัดสินใจซื้อปัจจัยหรือกำหนดวันตัดโดยลำพัง"
           actions={
             <>
               <Button
@@ -145,11 +145,11 @@ export function CultivationGuide() {
           <CardHeader
             icon="tune"
             title="1. แผงจำลองปัจจัยแปลงเพาะปลูก & สายพันธุ์ (AI Simulator)"
-            subtitle="กำหนดขนาดพื้นที่ สายพันธุ์ ระยะปลูก ระบบการปลูก และสภาพแวดล้อมเพื่อประมวลผลเชิงวิชาการ"
+            subtitle="กำหนดปัจจัยแปลงเพื่อดูผลจำลองจากสมมติฐานของโปรแกรม ไม่ใช่คำพยากรณ์ที่ผ่านการยืนยัน"
             action={
               <Badge tone="secondary">
                 <Icon name="verified" size={14} />
-                อิงสูตรวิชาการเกษตรแม่นยำ
+                ผลจำลอง ยังไม่ผ่านการสอบเทียบ
               </Badge>
             }
           />
@@ -227,7 +227,7 @@ export function CultivationGuide() {
                           cultivarId === item.id ? 'text-white/90' : 'text-secondary',
                         )}
                       >
-                        {item.days} วัน • {item.brix[0]}–{item.brix[1]}° Brix
+                        {item.shape} • ค่า °Brix ต้องวัดจริง
                       </span>
                     </button>
                   ))}
@@ -437,7 +437,7 @@ export function CultivationGuide() {
                     เกรด B: {plan.gradeBYieldTonnes} ตัน
                   </p>
                   <p className="text-caption text-on-surface-variant">
-                    ความหวานเป้าหมาย {plan.expectedBrixLow} – {plan.expectedBrixHigh}° Brix
+                    ยังไม่มีข้อมูลปรับเทียบเพื่อทำนายค่า °Brix จากแผนปลูก
                   </p>
                   <Meter
                     value={plan.yieldScore}

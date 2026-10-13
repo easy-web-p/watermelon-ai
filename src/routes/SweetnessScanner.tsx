@@ -4,34 +4,25 @@ import { Card, CardHeader } from '../components/ui/Card';
 import { Badge, LiveBadge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
-import { Meter } from '../components/ui/Meter';
 import { Segmented } from '../components/ui/Segmented';
 import { useToast } from '../components/ui/Toast';
-import { KnockResultCard } from '../components/domain/KnockResultCard';
 import { DiseaseResultCard } from '../components/domain/DiseaseResultCard';
 import { VisionCompareCard } from '../components/domain/VisionCompareCard';
 import { VisionEngineModal } from '../components/domain/VisionEngineModal';
-import type { VisionEngineInfo, VisionEngineName } from '../lib/visionEngines';
-import { FALLBACK_ENGINES } from './DiseaseScan';
+import { FALLBACK_ENGINES, type VisionEngineInfo, type VisionEngineName } from '../lib/visionEngines';
 import { cn } from '../lib/cn';
 import { useRouter } from '../lib/router';
 import { Modal } from '../components/ui/Modal';
 import {
   api,
-  ApiError,
-  NetworkError,
   type AcousticModelStatus,
-  type ApiVariety,
+  type AcousticAnalysis,
   type DiseaseDetection,
-  type DiseaseModelStatus,
   type DiseaseRecord,
-  type KnockAnalysis,
   type VisionCompareResponse,
 } from '../lib/api';
-import { runClientDiseaseAnalysis } from '../lib/clientDiseaseHeuristic';
-import { compressImage, useKnockRecorder, validateImage } from '../lib/media';
-import { useAuth } from '../store/auth';
-import { CULTIVARS, RIPENESS_BANDS } from '../data/cultivars';
+import { compressImage, recordingToPcm, useKnockRecorder, validateImage } from '../lib/media';
+import { CULTIVARS } from '../data/cultivars';
 
 type Method = 'knock' | 'photo';
 
@@ -85,62 +76,77 @@ function Waveform({ level, levels, active }: { level: number; levels?: number[];
 
 export function SweetnessScanner() {
   const [method, setMethod] = useState<Method>('photo');
-  const [cultivarId, setCultivarId] = useState(CULTIVARS[0].id);
-  const [knock, setKnock] = useState<KnockAnalysis | null>(null);
+  const [cultivarId, setCultivarId] = useState('');
+  const [acoustic, setAcoustic] = useState<AcousticAnalysis | null>(null);
+  const [massText, setMassText] = useState('');
+  const [measuredBrixText, setMeasuredBrixText] = useState('');
+  const [targetBrixText, setTargetBrixText] = useState('');
   const [disease, setDisease] = useState<DiseaseDetection | null>(null);
   const [compareData, setCompareData] = useState<VisionCompareResponse | null>(null);
-  const [photoEngine, setPhotoEngine] = useState<VisionEngineName>('wide9');
+  const [photoEngine, setPhotoEngine] = useState<VisionEngineName>('legacy4');
   const [engineList, setEngineList] = useState<readonly VisionEngineInfo[]>(FALLBACK_ENGINES);
+  const [engineError, setEngineError] = useState<string | null>(null);
   const [engineModalOpen, setEngineModalOpen] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [varieties, setVarieties] = useState<ApiVariety[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<DiseaseRecord[] | null>(null);
   const [acousticStatus, setAcousticStatus] = useState<AcousticModelStatus | null>(null);
-  const [diseaseStatus, setDiseaseStatus] = useState<DiseaseModelStatus | null>(null);
+  const [diseaseStatus, setDiseaseStatus] = useState<{ online: boolean; error?: string } | null>(null);
 
   const fileInput = useRef<HTMLInputElement>(null);
+  const lastAnalysedClip = useRef<string | null>(null);
   const toast = useToast();
   const { navigate } = useRouter();
   const recorder = useKnockRecorder();
-  const allowTraining = useAuth((state) => state.consent.improveModel);
 
-  const cultivar = CULTIVARS.find((item) => item.id === cultivarId) ?? CULTIVARS[0];
-  // Match the local cultivar to the server's acoustic calibration table by name.
-  const calibration = varieties.find((item) => item.name.includes(cultivar.name.split(' ')[0]));
+  const cultivar = CULTIVARS.find((item) => item.id === cultivarId);
+  const cultivarName = cultivar?.name ?? 'สายพันธุ์ที่ยังไม่ระบุ';
+  const measuredBrix = measuredBrixText.trim() && Number.isFinite(Number(measuredBrixText))
+    ? Number(measuredBrixText) : null;
+  const targetBrix = targetBrixText.trim() && Number.isFinite(Number(targetBrixText))
+    ? Number(targetBrixText) : null;
+  const validMeasuredBrix = measuredBrix !== null && measuredBrix >= 0 && measuredBrix <= 30;
+  const validTargetBrix = targetBrix !== null && targetBrix >= 0 && targetBrix <= 30;
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .varieties()
-      .then((list) => {
-        if (!cancelled) setVarieties(Array.isArray(list) ? list : []);
-      })
-      .catch(() => undefined);
-
     api
       .acousticModelStatus()
       .then((st) => {
         if (!cancelled) setAcousticStatus(st);
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (!cancelled) setAcousticStatus({
+          success: false,
+          online: false,
+          error: error instanceof Error ? error.message : 'ตรวจสถานะเสียงไม่ได้',
+        });
+      });
 
     api
       .diseaseModelStatus()
       .then((st) => {
         if (!cancelled) setDiseaseStatus(st);
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (!cancelled) setDiseaseStatus({
+          online: false,
+          error: error instanceof Error ? error.message : 'ตรวจสถานะโมเดลภาพไม่ได้',
+        });
+      });
 
     api
       .visionEngines()
       .then((res) => {
-        if (!cancelled && res.engines && res.engines.length > 0) {
+        if (!cancelled) {
           setEngineList(res.engines);
+          setEngineError(null);
         }
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (!cancelled) setEngineError(error instanceof Error ? error.message : 'โหลดเครื่องยนต์ไม่ได้');
+      });
 
     return () => {
       cancelled = true;
@@ -155,7 +161,7 @@ export function SweetnessScanner() {
 
   const analyseKnock = useCallback(async () => {
     if (!isAcousticOnline) {
-      toast.info('ระบบวิเคราะห์เสียงเคาะอยู่ระหว่างการวิจัยและพัฒนา เพื่อความแม่นยำและไม่สุ่มเดาผล กรุณาใช้วิธีวิเคราะห์จากภาพถ่ายแทนครับ');
+      toast.error('ระบบวัดคลื่นเสียงยังไม่พร้อมใช้งาน');
       return;
     }
 
@@ -163,33 +169,31 @@ export function SweetnessScanner() {
     if (!clip) return;
 
     setBusy(true);
-    setDisease(null);
+    setAcoustic(null);
     try {
-      await api
-        .uploadFile({ name: 'knock-recording.webm', mimeType: clip.mimeType, fileData: clip.dataUrl })
-        .catch(() => undefined);
-
-      const reply = await api.sendMessage(`scan-${Date.now()}`, {
-        content: `วิเคราะห์เสียงเคาะสายพันธุ์${cultivar.name} ความยาว ${(clip.durationMs / 1000).toFixed(1)} วินาที`,
-        mode: 'knock-analysis',
-        allow_training: allowTraining,
-      });
-
-      if (reply.knockAnalysis) {
-        setKnock(reply.knockAnalysis);
-        toast.success('วิเคราะห์เสียงเคาะเรียบร้อย');
-      } else {
-        toast.error('ระบบไม่ได้ส่งผลวิเคราะห์กลับมา กรุณาลองใหม่');
+      const pcm = await recordingToPcm(clip);
+      const massKg = massText.trim() ? Number(massText) : undefined;
+      if (massKg !== undefined && (!Number.isFinite(massKg) || massKg <= 0 || massKg > 30)) {
+        throw new Error('น้ำหนักผลต้องอยู่ระหว่าง 0–30 กก.');
       }
+      const result = await api.analyseKnock({
+        ...pcm,
+        ...(massKg === undefined ? {} : { massKg }),
+      });
+      setAcoustic(result);
+      toast.success('วัดคลื่นเสียงจากไฟล์ที่อัดจริงแล้ว');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'วิเคราะห์เสียงไม่สำเร็จ');
     } finally {
       setBusy(false);
     }
-  }, [isAcousticOnline, recorder.recording, cultivar.name, allowTraining, toast]);
+  }, [isAcousticOnline, recorder.recording, massText, toast]);
 
   useEffect(() => {
-    if (recorder.state === 'ready' && recorder.recording) void analyseKnock();
+    if (recorder.state !== 'ready' || !recorder.recording) return;
+    if (lastAnalysedClip.current === recorder.recording.dataUrl) return;
+    lastAnalysedClip.current = recorder.recording.dataUrl;
+    void analyseKnock();
   }, [recorder.state, recorder.recording, analyseKnock]);
 
   async function handleFile(file: File | undefined) {
@@ -202,60 +206,26 @@ export function SweetnessScanner() {
     }
 
     setBusy(true);
-    setKnock(null);
+    setAcoustic(null);
     setDisease(null);
     setCompareData(null);
     try {
       const dataUrl = await compressImage(file);
       setPhoto(dataUrl);
+      if (!engineList.some((engine) => engine.name === photoEngine)) {
+        throw new Error(engineError ?? 'เครื่องยนต์ที่เลือกยังไม่พร้อมใช้งาน');
+      }
 
-      if (photoEngine === 'claude' || photoEngine === 'wide9') {
-        try {
-          const compRes = await api.visionCompare({
-            imageBase64: dataUrl,
-            engine: photoEngine,
-            notes: `สายพันธุ์${cultivar.name}`,
-          });
-          setCompareData(compRes);
-          toast.success(`วิเคราะห์ภาพสำเร็จด้วย ${photoEngine === 'claude' ? 'Claude Vision (เทพสุด)' : 'Wide-9'}`);
-        } catch (compErr) {
-          // If visionCompare fails or offline, fallback to standard detectDisease
-          const fallback = await api
-            .detectDisease({ imageBase64: dataUrl, notes: `สายพันธุ์${cultivar.name}` })
-            .catch(async (apiErr) => {
-              const isOfflineOrPreview =
-                (apiErr instanceof ApiError && (apiErr.status === 404 || apiErr.status === 502 || apiErr.status === 503)) ||
-                apiErr instanceof NetworkError;
-              if (isOfflineOrPreview) {
-                return await runClientDiseaseAnalysis(dataUrl, {
-                  plantPart: 'mature_leaf',
-                  onset: 'today',
-                  incidence: 'isolated',
-                });
-              }
-              throw apiErr;
-            });
-          setDisease(fallback);
-          toast.success('วิเคราะห์ภาพเรียบร้อย (โหมดพื้นฐาน)');
-        }
+      if (photoEngine !== 'legacy4') {
+        const compRes = await api.visionCompare({
+          imageBase64: dataUrl,
+          engine: photoEngine,
+          notes: cultivar ? `ผู้ใช้ระบุสายพันธุ์${cultivar.name}` : undefined,
+        });
+        setCompareData(compRes);
+        toast.success(`ได้รับข้อสังเกตเพิ่มเติมจาก ${engineList.find((engine) => engine.name === photoEngine)?.title_th ?? photoEngine}`);
       } else {
-        let result: DiseaseDetection;
-        try {
-          result = await api.detectDisease({ imageBase64: dataUrl, notes: `สายพันธุ์${cultivar.name}`, engine: 'legacy4' });
-        } catch (apiErr) {
-          const isOfflineOrPreview =
-            (apiErr instanceof ApiError && (apiErr.status === 404 || apiErr.status === 502 || apiErr.status === 503)) ||
-            apiErr instanceof NetworkError;
-          if (isOfflineOrPreview) {
-            result = await runClientDiseaseAnalysis(dataUrl, {
-              plantPart: 'mature_leaf',
-              onset: 'today',
-              incidence: 'isolated',
-            });
-          } else {
-            throw apiErr;
-          }
-        }
+        const result = await api.detectDisease({ imageBase64: dataUrl, notes: cultivar ? `ผู้ใช้ระบุสายพันธุ์${cultivar.name}` : undefined, engine: 'legacy4' });
         setDisease(result);
         toast.success('วิเคราะห์ภาพเรียบร้อย');
       }
@@ -267,15 +237,7 @@ export function SweetnessScanner() {
   }
 
   const recording = recorder.state === 'recording';
-  const hasResult = Boolean(knock || disease || compareData);
-
-  const ripenessBand = knock
-    ? knock.probabilities.ripe >= knock.probabilities.unripe && knock.probabilities.ripe >= knock.probabilities.overripe
-      ? RIPENESS_BANDS[1]
-      : knock.probabilities.unripe > knock.probabilities.overripe
-        ? RIPENESS_BANDS[0]
-        : RIPENESS_BANDS[2]
-    : null;
+  const hasResult = Boolean(acoustic || disease || compareData || validMeasuredBrix);
 
   return (
     <AppShell>
@@ -294,26 +256,30 @@ export function SweetnessScanner() {
                   <Badge tone="error">โมเดลภาพไม่ออนไลน์</Badge>
                 )
               ) : isAcousticOnline ? (
-                <LiveBadge>โมเดลพร้อมใช้งาน</LiveBadge>
+                <LiveBadge>ระบบวัดคลื่นเสียงพร้อมใช้งาน</LiveBadge>
               ) : (
                 <Badge tone="outline">
                   <Icon name="construction" size={12} />
-                  อยู่ระหว่างวิจัย (ไม่สุ่มเดาผล)
+                  ระบบวัดเสียงไม่ออนไลน์
                 </Badge>
               )}
             </>
           }
-          title="ตรวจวัดความหวาน & วิเคราะห์สายพันธุ์"
-          description="เคาะผลแตงโมแล้วให้ AI ฟังคลื่นเสียง หรืออัปโหลดภาพผลเพื่อประเมินค่าความหวาน Brix ระยะความสุก และตรวจโรคที่ผิวผล"
+          title="เทียบค่าความหวานและตรวจข้อมูลสายพันธุ์"
+          description="กรอกค่า °Brix ที่วัดด้วยรีแฟรกโตมิเตอร์เพื่อเทียบเป้าหมายของคุณ วัดคลื่นเสียงเคาะได้จริง แต่เสียงและภาพใบยังไม่สามารถทำนายความหวานหรือยืนยันสายพันธุ์"
           actions={
             hasResult ? (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  setKnock(null);
+                  setAcoustic(null);
                   setDisease(null);
+                  setCompareData(null);
                   setPhoto(null);
+                  setMeasuredBrixText('');
+                  setTargetBrixText('');
+                  setMassText('');
                   recorder.reset();
                 }}
               >
@@ -337,11 +303,11 @@ export function SweetnessScanner() {
           <Card className="lg:col-span-7">
             <CardHeader
               icon={method === 'knock' ? 'mic' : 'photo_camera'}
-              title={method === 'knock' ? 'บันทึกเสียงเคาะผลแตงโม' : 'อัปโหลดภาพผลแตงโม'}
+              title={method === 'knock' ? 'บันทึกเสียงเคาะผลแตงโม' : 'อัปโหลดภาพใบแตงโมเพื่อตรวจโรค'}
               subtitle={
                 method === 'knock'
                   ? 'เคาะกลางผล 3 ครั้งห่างกันประมาณ 1 วินาที ในที่เงียบ'
-                  : 'ถ่ายผลเต็มใบในแสงธรรมชาติ ให้เห็นลายเปลือกและจุดสัมผัสพื้น'
+                  : 'ถ่ายใบแตงโมในแสงธรรมชาติให้เห็นอาการชัดเจน โมเดลนี้ไม่ได้ฝึกอ่านภาพผล'
               }
               action={
                 <Segmented
@@ -365,9 +331,9 @@ export function SweetnessScanner() {
                       <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                         <Icon name="construction" size={24} />
                       </div>
-                      <h3 className="mt-3 text-title-md font-bold text-on-surface">ระบบวิเคราะห์เสียงเคาะอยู่ระหว่างการวิจัย</h3>
+                      <h3 className="mt-3 text-title-md font-bold text-on-surface">ระบบวัดคลื่นเสียงไม่ออนไลน์</h3>
                       <p className="mx-auto mt-2 max-w-md text-body-md text-on-surface-variant">
-                        เพื่อความปลอดภัยของผลผลิตและเป็นไปตามหลักวิชาการ ระบบจะไม่สร้างตัวเลขความหวานหรือความถี่สมมติขึ้นมาเอง ชั่วคราวนี้แนะนำให้ใช้วิธี <strong>วิเคราะห์จากภาพ</strong> เพื่อความแม่นยำครับ
+                        {acousticStatus?.error ?? 'เมื่อบริการพร้อมจะวัดความถี่จากเสียงที่อัดจริง โดยไม่เดาค่า °Brix หรือระดับความสุกจากเสียง'}
                       </p>
                       <div className="mt-4 flex justify-center">
                         <Button
@@ -379,7 +345,7 @@ export function SweetnessScanner() {
                           }}
                         >
                           <Icon name="photo_camera" size={18} />
-                          สลับไปตรวจจากภาพถ่าย
+                          สลับไปตรวจโรคใบจากภาพ
                         </Button>
                       </div>
                     </div>
@@ -391,14 +357,28 @@ export function SweetnessScanner() {
                       ? `กำลังรับฟัง ${(recorder.elapsedMs / 1000).toFixed(1)} วินาที — เคาะต่อไปจนครบ 3 ครั้ง`
                       : busy
                         ? 'กำลังประมวลผลคลื่นเสียง...'
-                        : knock
-                          ? 'วิเคราะห์เสร็จสมบูรณ์ — ดูผลด้านขวา'
+                        : acoustic
+                          ? 'วัดคลื่นเสียงเสร็จแล้ว — ดูผลด้านขวา'
                           : !isAcousticOnline
-                            ? 'ระบบเสียงเคาะยังไม่เปิดให้บริการ กรุณาใช้วิธีวิเคราะห์จากภาพด้านบน'
+                            ? 'ระบบวัดคลื่นเสียงไม่ออนไลน์ กรุณาลองใหม่เมื่อบริการพร้อม'
                             : recorder.state === 'denied'
                               ? 'ไม่ได้รับอนุญาตให้ใช้ไมโครโฟน กรุณาอนุญาตแล้วลองใหม่'
                               : 'กดปุ่มด้านล่างแล้วเคาะผลแตงโมใกล้ไมโครโฟน'}
                   </p>
+
+                  <label className="mt-4 block text-center text-label-md font-semibold text-on-surface-variant">
+                    น้ำหนักผลที่ชั่งจริง (กก., ไม่บังคับ)
+                    <input
+                      type="number"
+                      min="0.01"
+                      max="30"
+                      step="0.01"
+                      value={massText}
+                      onChange={(event) => setMassText(event.target.value)}
+                      className="mt-2 block w-full rounded-md border border-outline-variant bg-surface-lowest px-3 py-2 text-on-surface"
+                      placeholder="เช่น 4.2"
+                    />
+                  </label>
 
                   <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
                     {recording ? (
@@ -411,13 +391,13 @@ export function SweetnessScanner() {
                         size="lg"
                         onClick={() => void recorder.start()}
                         disabled={busy || !isAcousticOnline}
-                        title={!isAcousticOnline ? 'ระบบเสียงเคาะอยู่ระหว่างการวิจัย' : undefined}
+                        title={!isAcousticOnline ? 'ระบบวัดเสียงไม่ออนไลน์' : undefined}
                       >
                         <Icon name={!isAcousticOnline ? 'mic_off' : 'mic'} size={20} />
                         {busy
                           ? 'กำลังวิเคราะห์...'
                           : !isAcousticOnline
-                            ? 'ระบบเสียงอยู่ระหว่างวิจัย'
+                            ? 'ระบบวัดเสียงไม่ออนไลน์'
                             : 'เริ่มบันทึกเสียงเคาะ'}
                       </Button>
                     )}
@@ -441,6 +421,7 @@ export function SweetnessScanner() {
                       <button
                         type="button"
                         onClick={() => setPhotoEngine('wide9')}
+                        disabled={!engineList.some((engine) => engine.name === 'wide9')}
                         className={cn(
                           'cursor-pointer rounded-full px-3 py-1 text-label-xs font-semibold transition-all duration-150',
                           photoEngine === 'wide9'
@@ -453,6 +434,7 @@ export function SweetnessScanner() {
                       <button
                         type="button"
                         onClick={() => setPhotoEngine('legacy4')}
+                        disabled={!engineList.some((engine) => engine.name === 'legacy4')}
                         className={cn(
                           'cursor-pointer rounded-full px-3 py-1 text-label-xs font-semibold transition-all duration-150',
                           photoEngine === 'legacy4'
@@ -472,6 +454,7 @@ export function SweetnessScanner() {
                       </button>
                     </div>
                   </div>
+                  {engineError && <p role="alert" className="mb-3 text-caption text-error">โหลดเครื่องยนต์ AI ไม่สำเร็จ: {engineError}</p>}
 
                   <input
                     ref={fileInput}
@@ -513,42 +496,70 @@ export function SweetnessScanner() {
               )}
             </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {RIPENESS_BANDS.map((band) => (
-                <div
-                  key={band.id}
-                  className={cn(
-                    'rounded-md p-4 transition-all',
-                    ripenessBand?.id === band.id ? 'bg-secondary-container ring-2 ring-secondary' : 'bg-surface-low',
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-label-lg font-bold text-on-surface">{band.label}</p>
-                    <Badge tone={band.tone === 'secondary' ? 'secondary' : band.tone === 'error' ? 'error' : 'neutral'}>
-                      {band.brix} Brix
-                    </Badge>
-                  </div>
-                  <p className="mt-1.5 text-caption text-on-surface-variant">{band.note}</p>
-                </div>
-              ))}
+            <div className="mt-5 rounded-md bg-surface-low p-4">
+              <p className="text-label-lg font-bold text-on-surface">ค่าความหวานที่วัดจริง</p>
+              <p className="mt-1 text-caption text-on-surface-variant">
+                ใช้รีแฟรกโตมิเตอร์วัดน้ำคั้นจากผล แล้วกรอกค่าเอง ภาพและเสียงเคาะไม่ให้ค่า °Brix
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="text-label-md font-semibold text-on-surface-variant">
+                  ค่า °Brix ที่วัดได้
+                  <input
+                    type="number"
+                    min="0"
+                    max="30"
+                    step="0.1"
+                    value={measuredBrixText}
+                    onChange={(event) => setMeasuredBrixText(event.target.value)}
+                    className="mt-1 block w-full rounded-md border border-outline-variant bg-surface-lowest px-3 py-2 text-on-surface"
+                    placeholder="เช่น 11.8"
+                  />
+                </label>
+                <label className="text-label-md font-semibold text-on-surface-variant">
+                  เป้าหมาย °Brix จากเกณฑ์ของคุณ (ไม่บังคับ)
+                  <input
+                    type="number"
+                    min="0"
+                    max="30"
+                    step="0.1"
+                    value={targetBrixText}
+                    onChange={(event) => setTargetBrixText(event.target.value)}
+                    className="mt-1 block w-full rounded-md border border-outline-variant bg-surface-lowest px-3 py-2 text-on-surface"
+                    placeholder="เช่น 12.0"
+                  />
+                </label>
+              </div>
+              {measuredBrixText && !validMeasuredBrix ? <p role="alert" className="mt-2 text-caption text-error">ค่า °Brix ต้องอยู่ระหว่าง 0–30</p> : null}
+              {targetBrixText && !validTargetBrix ? <p role="alert" className="mt-2 text-caption text-error">ค่าเป้าหมายต้องอยู่ระหว่าง 0–30 °Brix</p> : null}
+              {validMeasuredBrix ? (
+                <p className="mt-3 text-body-md text-on-surface">
+                  ผลที่คุณวัดจาก {cultivarName}: <strong>{measuredBrix!.toFixed(1)} °Brix</strong>
+                  {validTargetBrix ? ` • ${measuredBrix! >= targetBrix! ? 'สูงกว่า' : 'ต่ำกว่า'}เป้าหมายที่คุณกรอก ${Math.abs(measuredBrix! - targetBrix!).toFixed(1)} °Brix` : ''}
+                </p>
+              ) : null}
             </div>
           </Card>
 
           <div className="flex flex-col gap-4 lg:col-span-5">
             <Card>
-              {knock ? (
+              {acoustic ? (
                 <>
-                  <KnockResultCard result={knock} />
+                  <CardHeader icon="graphic_eq" iconTone="secondary" title="ผลวัดคลื่นเสียงจริง" subtitle="ประมวลผล FFT จากเสียงที่อัด ไม่ใช่โมเดลทำนายความหวาน" />
+                  <dl className="grid grid-cols-2 gap-3">
+                    <div><dt className="text-caption text-on-surface-variant">ความถี่เด่น</dt><dd className="text-headline-sm font-bold text-secondary">{acoustic.reading.dominant_frequency_hz} Hz</dd></div>
+                    <div><dt className="text-caption text-on-surface-variant">จังหวะเคาะ</dt><dd className="text-headline-sm font-bold text-on-surface">{acoustic.reading.impulse_count} ครั้ง</dd></div>
+                    <div><dt className="text-caption text-on-surface-variant">สัญญาณต่อเสียงรบกวน</dt><dd className="text-title-md font-bold text-on-surface">{acoustic.reading.snr_db} dB</dd></div>
+                    <div><dt className="text-caption text-on-surface-variant">เวลาหน่วงเสียง</dt><dd className="text-title-md font-bold text-on-surface">{acoustic.reading.decay_time_ms} ms</dd></div>
+                  </dl>
+                  {acoustic.reading.stiffness_index !== null ? <p className="mt-3 text-body-md text-on-surface-variant">ดัชนีความแข็งจากน้ำหนักที่ชั่ง: {acoustic.reading.stiffness_index} (ใช้เทียบผลในล็อตเดียวกันเท่านั้น)</p> : null}
+                  {acoustic.reading.notes_th.map((note) => <p key={note} className="mt-2 text-caption text-on-surface-variant">{note}</p>)}
+                  <p className="mt-3 text-body-md text-on-surface-variant">{acoustic.reading.brix_unavailable_reason_th}</p>
                   <div className="mt-3 flex flex-wrap gap-2 border-t border-surface-container-high/60 pt-3">
                     <Button
                       variant="ghost"
                       size="sm"
                       className="flex-1 justify-center text-xs"
-                      onClick={() =>
-                        (window.location.hash = `#/chat?q=${encodeURIComponent(
-                          `ผลเคาะตรวจวัดความหวาน ${cultivar.name}: ได้ระดับ ${knock.maturityGrade} (${knock.sweetnessEstimateBrix} Brix) ควรจัดการอย่างไรต่อครับ`,
-                        )}`)
-                      }
+                      onClick={() => navigate(`/chat?q=${encodeURIComponent(`ผลวัดเสียงเคาะ ${cultivarName} ความถี่เด่น ${acoustic.reading.dominant_frequency_hz} Hz แต่ยังไม่มีค่า Brix จากเสียง ช่วยอธิบายผลวัดนี้อย่างระมัดระวังครับ`)}`)}
                     >
                       <Icon name="chat" size={16} />
                       ปรึกษา AI ต่อ
@@ -575,7 +586,7 @@ export function SweetnessScanner() {
                       onClick={() =>
                         navigate(
                           `/chat?q=${encodeURIComponent(
-                            `ผลวิเคราะห์ภาพ ${cultivar.name} จาก ${photoEngine === 'claude' ? 'Claude Vision' : 'Wide-9'}: ตรวจพบอาการ ${compareData.prediction?.class_name ?? compareData.prediction?.top_class ?? ''} ขอคำปรึกษาเพิ่มเติมครับ`,
+                            `มีข้อสังเกตเพิ่มเติมจาก ${engineList.find((engine) => engine.name === photoEngine)?.title_th ?? photoEngine} สำหรับภาพใบ ${cultivarName} แต่ยังไม่ใช่คำวินิจฉัย ช่วยแนะนำวิธีตรวจสอบอาการเพิ่มเติมครับ`,
                           )}`,
                         )
                       }
@@ -606,8 +617,8 @@ export function SweetnessScanner() {
                         navigate(
                           `/chat?q=${encodeURIComponent(
                             disease.status === 'diagnosed'
-                              ? `ผลสแกนใบ ${cultivar.name} พบ ${disease.thai_name} ขอคำแนะนำการใช้ยาเพิ่มเติมครับ`
-                              : `สแกนใบ ${cultivar.name} แล้ว AI ${disease.thai_name} (ความมั่นใจ ${disease.confidence_percentage}%) ช่วยแนะนำวิธีตรวจอาการด้วยตาเปล่าครับ`,
+                              ? `ผลสแกนใบ ${cultivarName} พบ ${disease.thai_name} ช่วยแนะนำวิธีตรวจอาการและจัดการโดยไม่เดาค่า PHI ครับ`
+                              : `สแกนใบ ${cultivarName} แล้ว AI ${disease.thai_name} ช่วยแนะนำวิธีตรวจอาการด้วยตาเปล่าครับ`,
                           )}`,
                         )
                       }
@@ -637,7 +648,7 @@ export function SweetnessScanner() {
                   <div className="flex flex-col items-center gap-3 py-10 text-center">
                     <Icon name="monitoring" size={40} className="text-outline" />
                     <p className="max-w-xs text-body-md text-on-surface-variant">
-                      เริ่มตรวจวัดเพื่อดูค่าความหวาน ระดับความสุก และคำแนะนำช่วงเวลาเก็บเกี่ยว
+                      อัดเสียงเพื่อวัดคุณสมบัติคลื่นเสียง หรือกรอกค่า °Brix ที่วัดจริงด้วยเครื่องมือ
                     </p>
                   </div>
                 </>
@@ -649,7 +660,7 @@ export function SweetnessScanner() {
                 icon="eco"
                 iconTone="tertiary"
                 title="จับคู่สายพันธุ์"
-                subtitle="เลือกสายพันธุ์ที่ปลูกเพื่อเทียบเกณฑ์"
+                subtitle="เลือกจากชื่อบนซองเมล็ดหรือบันทึกแปลง ไม่ใช่ผลจำแนกจากภาพ"
               />
               <div className="flex flex-wrap gap-2">
                 {CULTIVARS.map((item) => (
@@ -672,10 +683,9 @@ export function SweetnessScanner() {
 
               <dl className="mt-4 grid grid-cols-2 gap-3">
                 {[
-                  { label: 'ทรงผล', value: cultivar.shape },
-                  { label: 'น้ำหนักเฉลี่ย', value: cultivar.weight },
-                  { label: 'ความหวานมาตรฐาน', value: `${cultivar.brix[0]} – ${cultivar.brix[1]} °Brix` },
-                  { label: 'อายุเก็บเกี่ยว', value: `${cultivar.days} วัน` },
+                  { label: 'ทรงผล', value: cultivar?.shape ?? 'เลือกสายพันธุ์ก่อน' },
+                  { label: 'ลายเปลือกตามแคตตาล็อก', value: cultivar?.rind ?? '—' },
+                  { label: 'ลักษณะเนื้อตามแคตตาล็อก', value: cultivar?.flesh ?? '—' },
                 ].map((row) => (
                   <div key={row.label} className="rounded-md bg-surface-low p-3">
                     <dt className="text-caption text-on-surface-variant">{row.label}</dt>
@@ -684,59 +694,8 @@ export function SweetnessScanner() {
                 ))}
               </dl>
 
-              {calibration ? (
-                <div className="mt-3 rounded-md bg-surface-container p-4">
-                  <p className="flex items-center gap-1.5 text-caption font-semibold tracking-wider text-outline uppercase">
-                    <Icon name="tune" size={13} />
-                    เกณฑ์คลื่นเสียงจากฐานข้อมูลระบบ
-                  </p>
-                  <p className="mt-1.5 text-body-md text-on-surface">
-                    ช่วงสุกพอดี{' '}
-                    <span className="font-bold text-secondary">
-                      {calibration.minRipeHz}–{calibration.maxRipeHz} Hz
-                    </span>{' '}
-                    • เป้าหมาย {calibration.targetBrix} °Brix
-                  </p>
-                  {knock ? (
-                    <p
-                      className={cn(
-                        'mt-1.5 flex items-center gap-1.5 text-caption font-semibold',
-                        knock.dominantFrequencyHz >= calibration.minRipeHz &&
-                          knock.dominantFrequencyHz <= calibration.maxRipeHz
-                          ? 'text-secondary'
-                          : 'text-primary',
-                      )}
-                    >
-                      <Icon
-                        name={
-                          knock.dominantFrequencyHz >= calibration.minRipeHz &&
-                          knock.dominantFrequencyHz <= calibration.maxRipeHz
-                            ? 'check_circle'
-                            : 'warning'
-                        }
-                        size={13}
-                      />
-                      ผลที่วัดได้ {knock.dominantFrequencyHz} Hz —{' '}
-                      {knock.dominantFrequencyHz >= calibration.minRipeHz &&
-                      knock.dominantFrequencyHz <= calibration.maxRipeHz
-                        ? 'อยู่ในเกณฑ์สุกพอดี'
-                        : 'อยู่นอกเกณฑ์ของสายพันธุ์นี้'}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-
               <div className="mt-3 rounded-md bg-mint-mist p-4">
-                <p className="text-caption text-on-surface-variant">ราคาตลาดอ้างอิงวันนี้</p>
-                <p className="mt-0.5 text-headline-sm font-bold text-secondary">{cultivar.market}</p>
-                <ul className="mt-2 flex flex-col gap-1">
-                  {cultivar.strengths.map((strength) => (
-                    <li key={strength} className="flex items-start gap-1.5 text-body-md text-on-surface-variant">
-                      <Icon name="check_circle" size={14} className="mt-1 text-secondary" />
-                      {strength}
-                    </li>
-                  ))}
-                </ul>
+                <p className="text-body-md text-on-surface-variant">ข้อมูลลักษณะเป็นเพียงแคตตาล็อกอ้างอิง ไม่สามารถยืนยันสายพันธุ์จากลักษณะภายนอกเพียงอย่างเดียว กรุณาตรวจชื่อบนซองเมล็ดหรือบันทึกแปลง</p>
               </div>
             </Card>
           </div>
@@ -745,19 +704,17 @@ export function SweetnessScanner() {
         <Card className="mt-4">
           <CardHeader
             icon="table_chart"
-            title="เปรียบเทียบสายพันธุ์แตงโมที่นิยมปลูกในไทย"
-            subtitle="ข้อมูลอ้างอิงจากศูนย์วิจัยพืชสวนและฐานข้อมูลเกษตรกรในระบบ"
+            title="เทียบลักษณะสายพันธุ์ในแคตตาล็อก"
+            subtitle="ข้อมูลลักษณะเพื่อช่วยตรวจชื่อเท่านั้น ยังไม่มีโมเดลยืนยันสายพันธุ์หรือผลวัดความหวานรายพันธุ์"
           />
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] border-collapse text-left">
               <thead>
                 <tr className="bg-surface-low text-label-md text-on-surface-variant">
                   <th scope="col" className="px-5 py-3 font-semibold">สายพันธุ์</th>
-                  <th scope="col" className="px-4 py-3 font-semibold">ความหวาน (Brix)</th>
-                  <th scope="col" className="px-4 py-3 font-semibold">น้ำหนัก</th>
-                  <th scope="col" className="px-4 py-3 font-semibold">อายุเก็บเกี่ยว</th>
+                  <th scope="col" className="px-4 py-3 font-semibold">ทรงผล</th>
+                  <th scope="col" className="px-4 py-3 font-semibold">ลายเปลือก</th>
                   <th scope="col" className="px-4 py-3 font-semibold">ลักษณะเนื้อ</th>
-                  <th scope="col" className="px-5 py-3 font-semibold">สัดส่วนพื้นที่ปลูก</th>
                 </tr>
               </thead>
               <tbody>
@@ -767,18 +724,9 @@ export function SweetnessScanner() {
                       <span className="block text-label-lg font-bold text-on-surface">{item.name}</span>
                       <span className="block text-caption text-on-surface-variant italic">{item.code}</span>
                     </th>
-                    <td className="px-4 py-4 text-title-md font-bold text-primary">
-                      {item.brix[0]} – {item.brix[1]}
-                    </td>
-                    <td className="px-4 py-4 text-body-md text-on-surface">{item.weight}</td>
-                    <td className="px-4 py-4 text-body-md text-on-surface">{item.days} วัน</td>
+                    <td className="px-4 py-4 text-body-md text-on-surface">{item.shape}</td>
+                    <td className="px-4 py-4 text-body-md text-on-surface">{item.rind}</td>
                     <td className="px-4 py-4 text-body-md text-on-surface-variant">{item.flesh}</td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <Meter value={item.share * 2.5} tone="secondary" className="h-1.5 w-20" label={item.name} />
-                        <span className="text-label-md font-bold text-on-surface">{item.share}%</span>
-                      </div>
-                    </td>
                   </tr>
                 ))}
               </tbody>

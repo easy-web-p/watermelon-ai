@@ -6,6 +6,7 @@ import { LogoMark } from '../brand/Logo';
 import { Link, useRouter } from '../../lib/router';
 import { cn } from '../../lib/cn';
 import { useDisplayUser } from '../../store/auth';
+import { UserProfileDropdown } from './UserProfileDropdown';
 
 /**
  * Signed-in chrome: a fixed 20rem sidebar on desktop that becomes a drawer
@@ -118,13 +119,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Icon name="help" size={22} />
             </Link>
 
-            <Link
-              to="/settings"
-              className="flex size-9 items-center justify-center rounded-full bg-secondary-fixed text-label-lg font-bold text-on-secondary-fixed-variant"
-              aria-label="บัญชีของฉัน"
-            >
-              {user.initial}
-            </Link>
+            <UserProfileDropdown />
           </div>
         </header>
 

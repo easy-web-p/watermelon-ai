@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import rawMetrics from '../../fastapi_service/metrics.json';
+import { MODEL_CLASSES } from '../lib/diseaseModel';
 
 /**
  * กันไม่ให้หน้าจอตอบชื่อสารเคมีในเส้นทางที่ยังไม่ได้วิเคราะห์ภาพ
@@ -93,5 +95,34 @@ describe('หน้าจอต้องไม่กุผลวินิจฉ�
     // การกลืน error ลง console แล้วเดินต่อ ทำให้ผู้ใช้เข้าใจว่าผลมาจากเครื่องยนต์
     // ที่เลือก ทั้งที่มาจากอีกเส้นทางซึ่งตีความความมั่นใจต่างกัน
     expect(source).not.toContain('falling back to standard');
+  });
+
+  it.each(SCREENS_THAT_ANALYSE_PHOTOS)('%s ไม่ใช้ heuristic แทนผล AI เมื่อเรียกไม่สำเร็จ', (relative) => {
+    const source = sourceWithoutComments(relative);
+    expect(source).not.toContain('runClientDiseaseAnalysis');
+  });
+
+  it('เส้นทางวินิจฉัยหลักตรึง legacy4 และปฏิเสธ engine อื่น', () => {
+    const server = sourceWithoutComments('server.ts');
+    expect(server).toContain('imageBase64, engine: "legacy4"');
+    expect(server).toContain('engine !== undefined && engine !== "legacy4"');
+  });
+
+  it('แชทไม่ปล่อยคำตอบกฎที่มีตัวเลขหรือราคาฝังไว้แทนโมเดลจริง', () => {
+    const server = sourceWithoutComments('server.ts');
+    expect(server).not.toContain('replyText = generateWatermelonAIExpertResponse');
+    expect(server).toContain('code: "CHAT_MODEL_DISABLED"');
+  });
+
+  it('หน้าประเมิน AI ใช้ผลวัดจริงแทนตัวเลขตัวอย่าง', () => {
+    const source = sourceWithoutComments('src/routes/AiEvaluation.tsx');
+    expect(source).toContain('MODEL_SUMMARY.accuracy');
+    expect(source).toContain('MODEL_METRICS[modelClass]');
+    for (const fabricated of ['1,200', '94.2%', 'R² = 0.84', 'ECE 0.042', 'Gummy Stem Blight']) {
+      expect(source).not.toContain(fabricated);
+    }
+    expect(rawMetrics.classes).toEqual([...MODEL_CLASSES]);
+    expect(rawMetrics.test.confusion_matrix.flat().reduce((sum, count) => sum + count, 0))
+      .toBe(rawMetrics.split_counts.test);
   });
 });

@@ -39,7 +39,6 @@ const HELP_TOPICS = [
   { icon: 'photo_camera', title: 'การสแกนและวินิจฉัยโรค', count: 12 },
   { icon: 'map', title: 'การจัดการแปลงเพาะปลูก', count: 8 },
   { icon: 'notifications', title: 'การแจ้งเตือนผ่าน LINE', count: 7 },
-  { icon: 'payments', title: 'การชำระเงินและแพ็กเกจ', count: 9 },
   { icon: 'lock', title: 'บัญชีและความปลอดภัย', count: 11 },
   { icon: 'smartphone', title: 'การใช้งานบนมือถือ', count: 6 },
 ];

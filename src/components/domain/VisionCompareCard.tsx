@@ -15,17 +15,27 @@ export function VisionCompareCard({
   className?: string;
 }) {
   const { engine, prediction, disclaimer } = compareResult;
+  const unusable = prediction.abstain === true || prediction.is_plant_image === false;
+  // A checkpoint member's temperature does not calibrate the complete engine.
+  // For older services without this flag, show the conservative interpretation.
+  const calibrated = prediction.engine_calibrated === true;
+  const explanation = prediction.summary_th || prediction.explanation;
+  const findings = prediction.observations ?? prediction.findings;
 
   // Extract class label
   const rawClass =
-    (prediction.class_id as string) ||
-    (prediction.predicted_class as string) ||
+    (prediction.class_id && prediction.class_id !== 'unknown' ? prediction.class_id : null) ||
+    prediction.predicted_class ||
     'ไม่ระบุ';
 
   // Check if class maps to a known disease in catalogue
-  const diseaseId = resolveDiseaseId(engine, rawClass);
+  const diseaseId = unusable ? null : resolveDiseaseId(engine, rawClass);
   const matchedDisease = diseaseId ? DISEASES.find((d) => d.id === diseaseId) : null;
-  const displayName = matchedDisease ? matchedDisease.name : rawClass;
+  const displayName = unusable
+    ? 'ยังไม่สามารถอ่านภาพนี้ได้'
+    : rawClass.toLowerCase() === 'healthy'
+      ? 'ใบปกติในคลาสโมเดล (ไม่ได้ยืนยันว่าไม่มีโรค)'
+      : matchedDisease ? matchedDisease.name : rawClass;
 
   // Confidence / Score
   const confidence =
@@ -54,7 +64,7 @@ export function VisionCompareCard({
               ข้อสังเกตเพิ่มเติม (ไม่ใช่คำวินิจฉัย)
             </span>
             <Badge tone="secondary">{engineLabels[engine] ?? engine}</Badge>
-            <Badge tone="neutral">ยังไม่ปรับเทียบ (คะแนนดิบ)</Badge>
+            <Badge tone="neutral">{calibrated ? 'ปรับเทียบแล้ว' : 'ยังไม่ปรับเทียบ'}</Badge>
           </div>
           <p className="mt-1 text-caption text-on-surface-variant">
             ผลตรวจจากโมเดลทางเลือกสำหรับดูแนวโน้มอาการ ไม่ใช้ตัวเลขความแม่นยำของโมเดลหลัก
@@ -75,11 +85,13 @@ export function VisionCompareCard({
       {/* Main Finding */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
         <div className="rounded-lg bg-surface-low p-3.5">
-          <p className="text-caption text-on-surface-variant">สิ่งที่โมเดลตรวจพบ:</p>
+          <p className="text-caption text-on-surface-variant">คลาสที่ได้คะแนนสูงสุด (ไม่ใช่โรคที่ยืนยัน):</p>
           <p className="mt-1 text-title-md font-bold text-on-surface">
             {displayName}
           </p>
-          {matchedDisease ? (
+          {unusable ? (
+            <p className="text-caption text-outline">กรุณาถ่ายภาพพืชที่ชัดเจนแล้วลองใหม่</p>
+          ) : matchedDisease ? (
             <p className="text-caption text-outline italic">
               {matchedDisease.latin} ({matchedDisease.category})
             </p>
@@ -93,33 +105,37 @@ export function VisionCompareCard({
         <div className="rounded-lg bg-surface-low p-3.5">
           <p className="text-caption text-on-surface-variant">คะแนนความมั่นใจของโมเดล:</p>
           <p className="mt-1 text-title-md font-bold text-secondary">
-            {confidence !== null ? `${confidence}%` : 'ไม่มีตัวเลข'}
+            {!unusable && confidence !== null ? `${confidence}%` : 'ไม่มีคะแนนที่ใช้สรุปได้'}
           </p>
           <p className="text-caption text-outline">
-            ⚠️ คะแนนดิบตามสัดส่วน Softmax (ไม่ใช่ความน่าจะเป็นจริง)
+            {engine === 'claude'
+              ? '⚠️ คะแนนประเมินตนเองของโมเดล ไม่ใช่ความน่าจะเป็นจริง'
+              : calibrated
+                ? 'คะแนนผ่านการปรับเทียบตามข้อมูลของโมเดลนี้'
+                : '⚠️ คะแนนโมเดลยังไม่ปรับเทียบ ไม่ใช่ความน่าจะเป็นจริง'}
           </p>
         </div>
       </div>
 
       {/* Reasons / Explanations if available */}
-      {prediction.explanation ? (
+      {explanation ? (
         <div className="rounded-lg bg-surface-low p-3.5 text-body-sm text-on-surface">
           <p className="font-semibold text-caption text-on-surface-variant mb-1 flex items-center gap-1">
             <Icon name="psychology" size={14} className="text-primary" />
             คำอธิบายลักษณะที่พบ:
           </p>
-          <p className="leading-relaxed">{String(prediction.explanation)}</p>
+          <p className="leading-relaxed">{String(explanation)}</p>
         </div>
       ) : null}
 
-      {Array.isArray(prediction.findings) && prediction.findings.length > 0 ? (
+      {Array.isArray(findings) && findings.length > 0 ? (
         <div className="rounded-lg bg-surface-low p-3.5 text-body-sm text-on-surface">
           <p className="font-semibold text-caption text-on-surface-variant mb-1 flex items-center gap-1">
             <Icon name="fact_check" size={14} className="text-secondary" />
             ข้อค้นพบสำคัญ:
           </p>
           <ul className="list-disc pl-5 space-y-0.5 text-caption">
-            {prediction.findings.map((f, i) => (
+            {findings.map((f, i) => (
               <li key={i}>{String(f)}</li>
             ))}
           </ul>

@@ -7,7 +7,7 @@
  * ไฟล์นี้จึงเพิ่มเข้ามาแบบไม่แตะสัญญาเก่า
  *
  * ทำไมต้องมีหลาย engine:
- * ไม่มีตัวใดดีกว่าอีกตัวในทุกงาน `legacy4` ปรับเทียบความน่าจะเป็นแล้วและวัดผลบน
+ * ไม่มีตัวใดดีกว่าอีกตัวในทุกงาน `legacy4` วัดผลบน
  * ภาพใบแตงโมจริง แต่ตรวจได้ 4 คลาส ภาพราแป้งจึงถูกบังคับให้ตอบคลาสที่ใกล้ที่สุด
  * ส่วน `wide9` ครอบคลุม 9 คลาสและตรวจราแป้งได้ แต่ยังไม่ปรับเทียบ และบางคลาส
  * เทรนจากภาพโรคของพืชอื่น ส่วน `claude` อ่านอาการนอกรายการคลาสได้และอธิบายเหตุผลได้
@@ -24,7 +24,7 @@ import { MODEL_CLASSES, type ModelClass } from './diseaseModel';
 export const VISION_ENGINE_NAMES = ['legacy4', 'wide9', 'wide11', 'baseline9', 'claude'] as const;
 export type VisionEngineName = (typeof VISION_ENGINE_NAMES)[number];
 
-/** ค่าเริ่มต้นตรงกับฝั่งเซอร์วิส: ตัวที่ปรับเทียบแล้วและวัดผลบนภาพแตงโมจริง */
+/** ค่าเริ่มต้นตรงกับฝั่งเซอร์วิส: ตัวที่วัดผลบนภาพแตงโมจริง (สถานะ calibration อ่านจากเซอร์วิส) */
 export const DEFAULT_VISION_ENGINE: VisionEngineName = 'legacy4';
 
 /** ข้อมูล engine หนึ่งตัวตามที่ `GET /engines` ของเซอร์วิสคืนมา */
@@ -51,6 +51,9 @@ export type VisionEngineList = {
   engines: readonly VisionEngineInfo[];
   note: string;
 };
+
+/** Unknown availability is not permission to advertise any engine. */
+export const FALLBACK_ENGINES: readonly VisionEngineInfo[] = [];
 
 /**
  * คลาสของ `legacy4` → รหัสโรคในแคตตาล็อก

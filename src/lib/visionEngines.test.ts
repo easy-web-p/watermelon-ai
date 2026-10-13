@@ -73,7 +73,7 @@ describe('vision engine class mapping', () => {
     expect(resolveDiseaseId('claude', 'ไม่มีรหัสนี้')).toBeNull();
   });
 
-  it('defaults to the engine that is calibrated and measured on watermelon photos', () => {
+  it('defaults to the engine measured on watermelon photos', () => {
     expect(DEFAULT_VISION_ENGINE).toBe('legacy4');
   });
 });
@@ -83,16 +83,16 @@ describe('รายการสำรองต้องไม่เสนอ eng
     // รายการนี้ถูกใช้ตอนเรียก GET /engines ไม่สำเร็จ ซึ่งเป็นตอนที่เรา "ไม่รู้"
     // ว่าฝั่งเซอร์วิสเปิด engine ที่เสียเงินไว้หรือไม่ การเดาว่าเปิดไว้แล้วเสนอ
     // ให้ผู้ใช้กด ทำให้เกิดค่าใช้จ่ายโดยไม่มีใครตัดสินใจ หรือได้ error เปล่า ๆ
-    const { FALLBACK_ENGINES } = await import('../routes/DiseaseScan');
+    const { FALLBACK_ENGINES } = await import('./visionEngines');
 
     const paid = FALLBACK_ENGINES.filter((e) => e.costs_money);
     expect(paid.map((e) => e.name), 'รายการสำรองเสนอ engine ที่เสียเงิน').toEqual([]);
-    expect(FALLBACK_ENGINES.length).toBeGreaterThan(0);
+    expect(FALLBACK_ENGINES).toEqual([]);
   });
 
   it('ทุกตัวในรายการสำรองระบุ costs_money ไว้ชัดเจน', async () => {
     // undefined จะลอดการกรองด้านบนไปได้ เพราะ falsy เหมือน false
-    const { FALLBACK_ENGINES } = await import('../routes/DiseaseScan');
+    const { FALLBACK_ENGINES } = await import('./visionEngines');
 
     for (const engine of FALLBACK_ENGINES) {
       expect(typeof engine.costs_money, `${engine.name} ไม่ได้ระบุ costs_money`).toBe('boolean');

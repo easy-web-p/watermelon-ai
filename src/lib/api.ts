@@ -184,6 +184,28 @@ export type ApiUser = {
   role: string;
   avatar?: string;
   organization?: string;
+  province?: string;
+  plotSize?: string;
+};
+
+export type ApiConsentSettings = {
+  analytics: boolean;
+  improveModel: boolean;
+  marketing: boolean;
+  shareAnonymised: boolean;
+  locationAlerts: boolean;
+};
+
+export type AccountSettingsResponse = {
+  success: true;
+  user: ApiUser;
+  consent: ApiConsentSettings;
+  capabilities: {
+    passwordChange: boolean;
+    avatarUpload: boolean;
+    twoFactor: boolean;
+    lineNotifications: boolean;
+  };
 };
 
 /**
@@ -293,6 +315,12 @@ export type VisionComparePrediction = {
   explanation?: string;
   reasons?: string[];
   findings?: string[];
+  observations?: string[];
+  summary_th?: string;
+  abstain?: boolean;
+  is_plant_image?: boolean;
+  calibration?: { fitted?: boolean; note?: string };
+  engine_calibrated?: boolean;
   raw_scores?: Record<string, number>;
   leaf_check?: {
     is_leaf?: boolean;
@@ -383,20 +411,73 @@ export type DiseaseCatalog = {
   diseases: DiseaseCatalogEntry[];
 };
 
-/**
- * Whether knock (acoustic) analysis can be used at all.
- *
- * Always `online: false` in this build — there is no acoustic model, and
- * the chat and scanner paths return 503 rather than invent a frequency and
- * a Brix reading. Call this before showing a microphone button so the
- * farmer is told up front instead of after recording.
- */
+/** FFT measurement availability; `online` never implies a Brix model. */
 export type AcousticModelStatus = {
   success: boolean;
   online: boolean;
+  reportsBrix?: false;
+  info?: {
+    method: string;
+    measures_th: string[];
+    does_not_measure_th: string[];
+    recording_tips_th: string[];
+  };
   error?: string;
   detail?: string;
   code?: string;
+};
+
+export type AcousticAnalysis = {
+  ok: true;
+  method: 'fft-resonance';
+  costs_money: false;
+  reading: {
+    dominant_frequency_hz: number;
+    peaks: { frequency_hz: number; relative_amplitude: number }[];
+    spectral_centroid_hz: number;
+    decay_time_ms: number;
+    impulse_count: number;
+    frequency_spread_hz: number;
+    snr_db: number;
+    duration_s: number;
+    sample_rate: number;
+    mass_kg: number | null;
+    stiffness_index: number | null;
+    notes_th: string[];
+    brix_estimate: null;
+    brix_unavailable_reason_th: string;
+    maturity_grade: null;
+    maturity_unavailable_reason_th: string;
+  };
+};
+
+/** A recording and a cut result must refer to the same physical fruit. */
+export type KnockUpload = {
+  success: true;
+  attachmentId: string;
+  filename: string;
+  size: number;
+  signedUrl: string;
+  downloadUrl: string;
+};
+
+export type WatermelonSpecimen = {
+  id: string;
+  ownerId: string;
+  variety: string;
+  weightKg: number;
+  audioAttachmentId: string | null;
+  status: string;
+};
+
+export type GroundTruthResult = {
+  success: true;
+  watermelon: WatermelonSpecimen;
+  /** True only after a reviewed candidate has actually entered training. */
+  addedToTrainingSet: boolean;
+  /** Linked recording and label were accepted into the review queue. */
+  queuedForReview: boolean;
+  trainingNote: string;
 };
 
 /** Liveness of the Python vision service behind the Node API. */
@@ -475,12 +556,14 @@ export const api = {
       attachment_ids?: string[];
       imageBase64?: string;
       allow_training?: boolean;
+      /** Guest-only context from device storage; the server never stores guest threads. */
+      history?: { role: 'user' | 'assistant'; content: string }[];
     },
   ) =>
     request<ApiMessage>(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
       method: 'POST',
       body,
-      timeout: 45_000,
+      timeout: 120_000,
     }),
 
   deleteConversation: (conversationId: string) =>
@@ -504,16 +587,11 @@ export const api = {
     notes?: string;
     mode?: 'fast' | 'balanced' | 'deep';
     /**
-     * เครื่องยนต์ที่จะใช้อ่านภาพ ละไว้เพื่อใช้ค่าเริ่มต้นของเซอร์วิส (`legacy4`)
+     * เส้นทางนี้บังคับใช้ `legacy4` ที่ Node API แม้ค่าเริ่มต้นของเซอร์วิสเปลี่ยน
      *
-     * ชื่อที่เซอร์วิสไม่รู้จักจะถูกตอบ 422 ไม่ใช่ถอยไปใช้ตัวเริ่มต้นเงียบ ๆ
-     * เพราะแต่ละตัวตีความตัวเลข `confidence` ต่างกัน — `legacy4` ปรับเทียบแล้ว
-     * ส่วนตัวอื่นยังไม่ ดูข้อดีข้อจำกัดรายตัวจาก `visionEngines()`
-     *
-     * `claude` ต้องใช้เวลานานกว่าหลายเท่าและมีค่าใช้จ่ายต่อการเรียก
-     * จึงควรให้ผู้ใช้เลือกเอง ไม่ตั้งเป็นค่าเริ่มต้น
+     * engine อื่นใช้ `visionCompare()` เป็นข้อสังเกตเสริมเท่านั้น
      */
-    engine?: VisionEngineName;
+    engine?: 'legacy4';
     /**
      * ห้องสนทนาที่จะบันทึกผลสแกนนี้เป็น turn ลงไป
      *
@@ -532,8 +610,7 @@ export const api = {
     request<DiseaseDetection & ScanFiling>('/watermelon/disease-detect', {
       method: 'POST',
       body,
-      // claude ที่ effort สูงใช้เวลาคิดนานกว่าโมเดลจำแนกมาก
-      timeout: body.engine === 'claude' ? 180_000 : 60_000,
+      timeout: 60_000,
     }),
 
   /**
@@ -585,6 +662,30 @@ export const api = {
     }
   },
 
+  /** Measures actual knock audio; never predicts sweetness or ripeness. */
+  analyseKnock: (body: { pcmBase64: string; sampleRate: number; massKg?: number }) =>
+    request<AcousticAnalysis>('/audio/knock-analysis', {
+      method: 'POST',
+      body,
+      timeout: 30_000,
+    }),
+
+  /** Store a WAV so that a later cut measurement can be paired with this fruit. */
+  uploadKnockWav: (body: { filename: string; fileData: string }) =>
+    request<KnockUpload>('/storage/upload', { method: 'POST', body, timeout: 60_000 }),
+
+  createWatermelonSpecimen: (body: { variety: string; weightKg: number; audioAttachmentId?: string }) =>
+    request<WatermelonSpecimen>('/watermelons', { method: 'POST', body }),
+
+  recordWatermelonGroundTruth: (id: string, body: {
+    actualBrix: number;
+    actualMaturity: string;
+    verifiedBy: string;
+    agreementStatus?: 'match' | 'mismatch' | 'partial';
+  }) => request<GroundTruthResult>(`/watermelons/${encodeURIComponent(id)}/ground-truth`, {
+    method: 'POST', body,
+  }),
+
   diseaseHistory: () =>
     request<{ success: boolean; count: number; unverifiedCount: number; records: DiseaseRecord[] }>(
       '/watermelon/disease-history',
@@ -602,7 +703,7 @@ export const api = {
   verifyOtp: (body: { sessionToken: string; code: string; phone: string }) =>
     request<{ success: boolean; user: ApiUser; token: string }>('/auth/otp/verify', { method: 'POST', body }),
 
-  socialLogin: (body: { provider: 'google' | 'line'; email?: string; name?: string; avatar?: string }) =>
+  socialLogin: (body: { provider: 'google' | 'line'; idToken?: string }) =>
     request<{ success: boolean; user: ApiUser; token: string }>('/auth/social', { method: 'POST', body }),
 
   login: (body: { identifier: string; password?: string }) =>
@@ -621,9 +722,17 @@ export const api = {
 
   me: () => request<{ success: boolean; user: ApiUser }>('/auth/me'),
 
+  accountSettings: () => request<AccountSettingsResponse>('/users/me/settings'),
+
+  updateProfile: (body: { name?: string; organization?: string; province?: string; plotSize?: string }) =>
+    request<{ success: true; user: ApiUser }>('/users/me/profile', { method: 'PATCH', body }),
+
+  changePassword: (body: { currentPassword: string; newPassword: string }) =>
+    request<{ success: true; message: string }>('/users/me/password', { method: 'POST', body }),
+
   /* PDPA */
-  updateConsent: (body: Record<string, boolean>) =>
-    request<unknown>('/users/me/consent', { method: 'PATCH', body }),
+  updateConsent: (body: Partial<ApiConsentSettings>) =>
+    request<{ success: true; consent: ApiConsentSettings }>('/users/me/consent', { method: 'PATCH', body }),
 
   exportMyData: () => request<unknown>('/pdpa/export-my-data', { timeout: 60_000 }),
 

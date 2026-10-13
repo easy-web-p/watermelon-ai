@@ -128,7 +128,7 @@ def _resolve_engine(requested: str | None) -> engines.Engine:
 
     ชื่อที่ไม่มีในทะเบียนต้องตอบ 422 พร้อมบอกว่ามีอะไรให้ใช้ ไม่ใช่เงียบ ๆ
     ถอยไปใช้ตัวเริ่มต้น เพราะผู้เรียกที่ขอ engine หนึ่งแล้วได้ผลจากอีกตัว
-    จะตีความตัวเลขความมั่นใจผิด (ตัวหนึ่งปรับเทียบแล้ว อีกตัวยังไม่)
+    จะตีความคะแนนของแต่ละโมเดลผิด เพราะการปรับเทียบและชุดทดสอบต่างกัน
     """
     registry: dict[str, engines.Engine] = app.state.engines
     name = requested or app.state.default_engine
@@ -236,7 +236,7 @@ app = FastAPI(
     title="Watermelon Leaf Disease Vision Service",
     description=(
         "จำแนกภาพใบแตงโม 4 คลาส ด้วยการรวมผลหลายมุมและหลายบริเวณของภาพ "
-        "ส่งคืนคะแนนความน่าจะเป็นพร้อมหลักฐานประกอบ ไม่ตีความเป็นคำวินิจฉัย"
+        "ส่งคืนคะแนนโมเดลพร้อมหลักฐานประกอบ (หากยังไม่ปรับเทียบไม่ใช่ความน่าจะเป็น) ไม่ตีความเป็นคำวินิจฉัย"
     ),
     version="3.0.0",
     lifespan=lifespan,
@@ -303,7 +303,7 @@ def list_engines():
         "default": app.state.default_engine,
         "engines": [engine.to_dict() for engine in registry.values()],
         "note": (
-            "ไม่มี engine ใดดีกว่าอีกตัวในทุกงาน legacy4 ปรับเทียบแล้วและวัดผลบนภาพแตงโมจริง "
+            "ไม่มี engine ใดดีกว่าอีกตัวในทุกงาน legacy4 วัดผลบนภาพแตงโมจริง "
             "ส่วนโมเดลเสริมเป็นข้อสังเกตจากภาพเดียวกันเท่านั้น เพราะยังไม่ปรับเทียบ "
             "หรือยังไม่มีผลวัดภาคสนามบนแตงโม"
         ),
@@ -337,7 +337,10 @@ def _predict(
             ),
         )
     try:
-        return engine.predict(image, mode, payload)
+        result = engine.predict(image, mode, payload)
+        # The registry flag describes calibration of the complete serving
+        # engine; a member checkpoint's temperature alone is insufficient.
+        return {**result, "engine_calibrated": engine.calibrated}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except engines.EngineUnavailable as exc:
