@@ -26,6 +26,9 @@ export function configuredGeminiKey(): string | null {
 export function setGeminiApiKey(key: string): void {
   window.localStorage.setItem('watermelon.gemini.apiKey', key.trim());
 }
+export function clearGeminiApiKey(): void {
+  try { window.localStorage.removeItem('watermelon.gemini.apiKey'); } catch { /* Storage may be disabled. */ }
+}
 async function geminiReply(key: string, content: string, history: ReturnType<typeof safeClientChatHistory>, evidence: ReturnType<typeof retrieveKnowledge>): Promise<string> {
   const contents = [...history.map((turn) => ({ role: turn.role === 'assistant' ? 'model' : 'user', parts: [{ text: turn.content }] })), { role: 'user', parts: [{ text: content.slice(0, 4000) }] }];
   const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {

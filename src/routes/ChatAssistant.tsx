@@ -9,6 +9,8 @@ import { KnockResultCard } from '../components/domain/KnockResultCard';
 import { DiseaseResultCard } from '../components/domain/DiseaseResultCard';
 import { VisionCompareCard } from '../components/domain/VisionCompareCard';
 import { VisionEngineModal } from '../components/domain/VisionEngineModal';
+import { GeminiApiKeyModal } from '../components/domain/GeminiApiKeyModal';
+import { configuredGeminiKey, setGeminiApiKey, clearGeminiApiKey } from '../lib/statelessChatEngine';
 import { cn } from '../lib/cn';
 import { useRouter } from '../lib/router';
 import {
@@ -102,9 +104,13 @@ function RichText({ text }: { text: string }) {
 function AssistantBar({
   onTool,
   ownership,
+  geminiKey,
+  onOpenApiKeyModal,
 }: {
   onTool: (tool: 'photo' | 'disease' | 'chemicals') => void;
   ownership?: ConversationOwnership | null;
+  geminiKey: string | null;
+  onOpenApiKeyModal: () => void;
 }) {
 
   return (
@@ -118,6 +124,20 @@ function AssistantBar({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-title-md leading-tight font-bold text-on-surface">น้องแตงโม AI</span>
             <Badge tone="primary">v2.4 Pro</Badge>
+            <button
+              type="button"
+              onClick={onOpenApiKeyModal}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-all cursor-pointer shadow-xs active:scale-95',
+                geminiKey
+                  ? 'bg-secondary-container text-on-secondary-fixed-variant hover:bg-secondary hover:text-on-secondary'
+                  : 'bg-primary/10 text-primary hover:bg-primary hover:text-on-primary',
+              )}
+              title={geminiKey ? 'Gemini 2.5 Flash: เปิดใช้งานคีย์ส่วนตัวแล้ว (คลิกเพื่อแก้ไข/ลบ)' : 'คลิกเพื่อตั้งค่า Gemini API Key (ฟรี)'}
+            >
+              <Icon name="key" size={13} />
+              <span>{geminiKey ? 'Gemini 2.5 Active' : 'ตั้งค่า Gemini Key'}</span>
+            </button>
             {ownership && (
               <span
                 className={cn(
@@ -166,10 +186,14 @@ function MessageRow({
   message,
   initial,
   onRetry,
+  onOpenApiKeyModal,
+  onSelectPrompt,
 }: {
   message: Message;
   initial: string;
   onRetry?: () => void;
+  onOpenApiKeyModal?: () => void;
+  onSelectPrompt?: (text: string) => void;
 }) {
   if (message.role === 'user') {
     return (
@@ -232,6 +256,69 @@ function MessageRow({
             <VisionCompareCard compareResult={message.visionCompare} className={message.text ? 'mt-4' : undefined} />
           ) : message.knock ? (
             <KnockResultCard result={message.knock} />
+          ) : null}
+
+          {message.modelVersion === 'no-key-boundary-rule' && onOpenApiKeyModal ? (
+            <div className="mt-4 rounded-xl border border-primary/25 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                  <Icon name="key" size={18} />
+                </span>
+                <div className="flex-1 space-y-1">
+                  <h4 className="text-label-lg font-bold text-on-surface">
+                    ต้องการถามคำถามทั่วไป หรือคุยได้ไม่จำกัด?
+                  </h4>
+                  <p className="text-caption text-on-surface-variant leading-relaxed">
+                    คุณสามารถขอรับ Gemini API Key ฟรีจาก Google AI Studio แล้วนำมาใส่ เพื่อใช้โมเดล Gemini 2.5 Flash คุยได้ทุกหัวข้อ
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pl-10">
+                <button
+                  type="button"
+                  onClick={onOpenApiKeyModal}
+                  className="cursor-pointer inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-label-md font-bold text-on-primary shadow-cta hover:bg-primary-container transition-all active:scale-95"
+                >
+                  <Icon name="vpn_key" size={16} />
+                  ตั้งค่า Gemini API Key (ฟรี)
+                </button>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="cursor-pointer inline-flex items-center gap-1 text-label-md font-semibold text-primary hover:underline px-2.5 py-1.5"
+                >
+                  <span>วิธีขอรับคีย์ที่ Google AI Studio</span>
+                  <Icon name="open_in_new" size={14} />
+                </a>
+              </div>
+
+              {onSelectPrompt ? (
+                <div className="pt-2.5 border-t border-outline-variant/20 pl-10">
+                  <p className="text-caption font-semibold text-outline mb-1.5">
+                    หรือทดลองถามในคลังความรู้ที่ตรวจทานแล้ว (ฟรี ไม่ต้องใช้คีย์):
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      'ราแป้งและราน้ำค้างแก้อย่างไร?',
+                      'ใบไหม้จุดดำเกิดจากอะไร?',
+                      'สูตรปุ๋ยแตงโม',
+                      'การให้น้ำแตงโม',
+                    ].map((topic) => (
+                      <button
+                        key={topic}
+                        type="button"
+                        onClick={() => onSelectPrompt(topic)}
+                        className="cursor-pointer rounded-full bg-surface-lowest px-3 py-1 text-caption font-medium text-on-surface hover:bg-surface-container-high transition-colors border border-outline-variant/30"
+                      >
+                        {topic}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           ) : null}
 
           {message.failed && onRetry ? (
@@ -299,6 +386,8 @@ export function ChatAssistant() {
   const [engineList, setEngineList] = useState<readonly VisionEngineInfo[]>(FALLBACK_ENGINES);
   const [engineListError, setEngineListError] = useState<string | null>(null);
   const [showEngineModal, setShowEngineModal] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [geminiKey, setGeminiKey] = useState<string | null>(() => configuredGeminiKey());
   const [busy, setBusy] = useState(false);
   const [pendingImage, setPendingImage] = useState<{ dataUrl: string; name: string } | null>(null);
 
@@ -646,6 +735,8 @@ export function ChatAssistant() {
       <div className="flex min-h-[calc(100vh-4rem)] flex-col">
         <AssistantBar
           ownership={ownership}
+          geminiKey={geminiKey}
+          onOpenApiKeyModal={() => setShowApiKeyModal(true)}
           onTool={(tool) => {
             if (tool === 'chemicals') {
               navigate('/fertilizer');
@@ -723,6 +814,8 @@ export function ChatAssistant() {
               message={message}
               initial={initial}
               onRetry={message.failed ? () => lastSend.current?.() : undefined}
+              onOpenApiKeyModal={() => setShowApiKeyModal(true)}
+              onSelectPrompt={(text) => void send(text)}
             />
           ))}
 
@@ -965,6 +1058,24 @@ export function ChatAssistant() {
           toast.success(
             `เปลี่ยนเครื่องยนต์ AI เป็น ${engineList.find((engine) => engine.name === eng)?.title_th ?? eng} แล้ว`,
           );
+        }}
+      />
+
+      <GeminiApiKeyModal
+        isOpen={showApiKeyModal}
+        onClose={() => setShowApiKeyModal(false)}
+        currentKey={geminiKey}
+        onSaveKey={(key) => {
+          setGeminiApiKey(key);
+          setGeminiKey(key);
+          setShowApiKeyModal(false);
+          toast.success('บันทึก Gemini API Key สำเร็จ! แชทพร้อมตอบคำถามด้วยโมเดล Gemini 2.5 Flash');
+        }}
+        onClearKey={() => {
+          clearGeminiApiKey();
+          setGeminiKey(null);
+          setShowApiKeyModal(false);
+          toast.info('ลบ Gemini API Key แล้ว สลับกลับไปใช้โหมดคลังความรู้ฟรี');
         }}
       />
     </AppShell>
