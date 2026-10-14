@@ -1,10 +1,45 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
-const OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
+const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
+
+/**
+ * Keep farmer conversations on the local host or the private Docker service.
+ * An unrestricted URL here would let a deployment setting silently forward
+ * chat content to an arbitrary third party.
+ */
+export function resolveOllamaBaseUrl(configured = process.env.OLLAMA_BASE_URL): string {
+  const raw = configured?.trim() || DEFAULT_OLLAMA_BASE_URL;
+  let parsed: URL;
+
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error('OLLAMA_BASE_URL ต้องเป็น URL ที่ถูกต้อง');
+  }
+
+  const allowedHosts = new Set(['127.0.0.1', 'localhost', '[::1]', 'ollama']);
+  const port = parsed.port || '80';
+  if (
+    parsed.protocol !== 'http:' ||
+    !allowedHosts.has(parsed.hostname) ||
+    port !== '11434' ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== '/' ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error('OLLAMA_BASE_URL อนุญาตเฉพาะ Ollama ภายในเครื่องหรือ private Docker network ที่พอร์ต 11434');
+  }
+
+  return parsed.origin;
+}
+
+const OLLAMA_BASE_URL = resolveOllamaBaseUrl();
 export const localChatModelName = (process.env.LOCAL_CHAT_MODEL ?? 'qwen3.5:4b').trim();
 
-// Localhost only: a farmer's conversation must not be forwarded to an
-// arbitrary URL supplied through an environment variable.
+// The resolver above limits this to loopback or the private `ollama` Docker
+// service. It cannot be pointed at a public host through configuration.
 export const localChatProvider = createOpenAICompatible({
   name: 'ollama',
   baseURL: `${OLLAMA_BASE_URL}/v1`,

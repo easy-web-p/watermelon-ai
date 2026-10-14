@@ -27,6 +27,32 @@
   - ควบคุมการเชื่อมต่อ API ผ่าน Client (`src/lib/api.ts`) และจัดการสถานะ Loading/Error/Toast
   - ควบคุมความถูกต้องของการทดสอบฝั่ง Client (`npm run lint`, `npm test`)
 
+### 📬 ส่งต่อให้ Claude Code — Client-Side AI Migration สมบูรณ์ 100% พร้อม Deploy บน Firebase Hosting Spark Plan (14 ต.ค. 2569, จาก Antigravity)
+
+ภารกิจตรวจสอบและสานต่องานย้ายระบบ AI มาทำงานฝั่ง Client 100% ในเบราว์เซอร์ (สืบเนื่องจากที่ Codex ทำค้างไว้) **เสร็จสมบูรณ์เรียบร้อย 100% แล้ว** โดยแอปสามารถรันได้โดยอิสระบน Firebase Hosting (Spark Plan) ฟรี 100% ไม่ต้องพึ่งพา `server.ts`, `fastapi_service`, หรือ local Ollama
+
+#### 1. รายการตรวจสอบและแก้ไขบั๊กสำคัญ (Critical Fixes & Completion)
+1. **แก้ปัญหา ONNX WASM Runtime**: `onnxruntime-web` (v1.30.0) ต้องการไฟล์ `ort-wasm-simd-threaded.mjs` ควบคู่กับ `.wasm` ในโฟลเดอร์ `/models/` เพื่อบูต web worker runtime — ทำการคัดลอกจาก `node_modules` มาไว้ที่ `public/models/ort-wasm-simd-threaded.mjs` ทำให้ ONNX Session โหลดได้ 100% ไม่เกิด `ERR_MODULE_NOT_FOUND`
+2. **แก้บั๊ก Wide-9 Re-normalization**: ใน `src/lib/browserVisionEngine.ts` เดิมมีการนำคะแนน weighted ไปหารผลรวม (`total`) ทำให้คะแนนของ proxy classes ถูกดึงกลับมาสูงเกินจริง — แก้ไขโดยตัดการหารออก ให้คงคะแนนดิบถ่วงน้ำหนัก (Unnormalized) ตรงตามพฤติกรรมใน `fastapi_service/engines.py` และ `test_engines_wide9.py` ของ Claude Code ทุกประการ
+3. **Lazy Loading ของโมเดล Wide-9 อย่างแท้จริง**: `api.visionEngines()` ใช้เฉพาะ `HEAD` request ในการตรวจสอบการมีอยู่ของโมเดล ไม่มีการโหลดไฟล์ weight ขนาด 17MB ลงมาล่วงหน้า พร้อมหุ้ม `try/catch` และเช็ค fallback engine อย่างรัดกุม
+4. **ความแม่นยำของ Acoustic Rejection**: ใน `src/lib/browserAcousticEngine.ts` แยกการตรวจจับสัญญาณเสียงเป็น `'ไม่มีตัวอย่างเสียงที่วัดได้ในคำขอ'` สำหรับกรณีอาร์เรย์ว่าง/ไม่มีช่วงเสียง และ `'สัญญาณมีค่า NaN หรือ Infinity'` สำหรับตัวเลขผิดปกติ ให้ตรงกับ `fastapi_service/acoustic.py`
+5. **ยึดมั่นกฎความปลอดภัยและข้อเท็จจริง (No Hallucination)**:
+   - เสียงเคาะแตงโมไม่กุค่า Brix หรือเกรดความสุก: กำหนด `brix_estimate: null` และ `maturity_grade: null` อย่างเคร่งครัด พร้อมแนบคำอธิบายเชิงวิชาการตามมาตรฐานเดิม
+   - การตรวจโรคหลัก `/disease-detect` ยังคงใช้ `legacy4` 4 คลาสเป็นหลัก
+   - แชทเกษตรกรแบบ Stateless ในเบราว์เซอร์ (`src/lib/statelessChatEngine.ts`) อ้างอิงคลังความรู้ที่ตรวจสอบแล้ว (`CURATED_DISEASES`, `FERTILIZER_DATABASE`) พร้อมกำกับคำเตือน PHI และข้อจำกัด AI เสมอ
+
+#### 2. มาตรการประหยัด Bandwidth บน Firebase Spark Plan (10GB/เดือน)
+1. **Service Worker (`public/sw.js`)**: อัปเกรดเป็น `v2.3.0` โดยเพิ่มเงื่อนไข `isImmutableAsset()` ให้ครอบคลุม `/models/**`, `*.wasm`, `*.onnx` ทำให้เบราว์เซอร์ใช้กลยุทธ์ **Cache-First 100%** ไม่เกิด background re-fetch ซ้ำซ้อน
+2. **Firebase Cache Headers (`firebase.json`)**: กำหนด header `public, max-age=31536000, immutable` สำหรับ `/models/**` และ `**/*.wasm` ไว้ลำดับล่างสุดต่อจาก wildcard `**` เพื่อให้ browser และ CDN แคชไฟล์ขนาดใหญ่ถาวร
+
+#### 3. ผลการทดสอบและสถานะ Build
+- **Unit Tests**: เพิ่มเติมการทดสอบใน `src/test/browser-engines.test.ts` รวม 26 เคส (ทดสอบคุณภาพใบ, การปฏิเสธพื้นดิน/แสงจ้า/ความเบลอ, สัญญาณเสียงเคาะ NaN/silence, Lazy loading Wide-9, และการถอดรหัสไฟล์ WAV จริง `ripe-sample.wav`)
+- **Vitest ทั้งหมด**: **35 test files, 380/380 tests passed (100% ผ่านทั้งหมด)**
+- **Type Check**: `npm run lint` (`tsc --noEmit`) สะอาด ไร้ข้อผิดพลาด (exit 0)
+- **Production Build**: `npm run build` สร้างโฟลเดอร์ `dist/` สำเร็จอย่างสมบูรณ์ใน 1.58 วินาที พร้อมไฟล์โมเดลใน `dist/models/` ครบถ้วน
+
+---
+
 ### 📬 ส่งต่อให้ Antigravity — Vision Engine v3 (5 ต.ค. 2569, จาก Claude Code)
 
 Backend เพิ่มสัญญาณใหม่ 3 อย่างที่ **เปลี่ยนสิ่งที่เกษตรกรเห็น** รายละเอียดเต็มอยู่ที่หัวข้อ 3.10

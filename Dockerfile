@@ -34,7 +34,7 @@ COPY dist ./dist
 # ติดตั้งแยกเฉพาะตัวที่จำเป็นต่อการรัน เพื่อไม่เอา devDependencies ทั้งชุดมา
 RUN npm install --no-save tsx@^4.21.0
 
-RUN useradd --create-home --shell /usr/sbin/nologin api \
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin api \
     && mkdir -p /app/data /app/uploads \
     && chown -R api:api /app
 USER api

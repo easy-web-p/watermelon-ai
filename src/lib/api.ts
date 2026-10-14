@@ -7,11 +7,28 @@
  * `VITE_API_BASE_URL` must point at the deployed API.
  */
 
-import type { ClassMetrics, DetectionStatus, DiseaseDetection } from './diseaseModel';
+import { buildDetection, MODEL_SUMMARY, OUT_OF_SCOPE_DISEASES, modelCoverage, type ClassMetrics, type DetectionStatus, type DiseaseDetection } from './diseaseModel';
 import type { VisionEngineList, VisionEngineName } from './visionEngines';
+import { DISEASES } from '../data/diseases';
+import { getLocalConversations, saveLocalConversation, deleteLocalConversation, getLocalMessages, getLocalDiseaseHistory, saveLocalDiseaseRecord, saveLocalMessages, toFeedMessage, type FeedMessage } from './chatHistory';
+import * as browserVision from './browserVisionEngine';
+import * as browserAcoustic from './browserAcousticEngine';
+import * as statelessChat from './statelessChatEngine';
 
 const RAW_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? '';
 export const API_BASE = `${RAW_BASE}/api/v1`;
+// Local inference is the default on every published origin, including Firebase
+// Hosting where /api/v1/* rewrites to index.html. Tests retain the REST contract.
+const USE_BROWSER_ENGINES = typeof window !== 'undefined' && import.meta.env.MODE !== 'test';
+const newLocalId = () => crypto.randomUUID();
+function localMessages(id: string): ApiMessage[] {
+  return getLocalMessages(id, true).filter((message) => !message.failed).map((message) => ({
+    id: message.id, conversationId: id, role: message.role, content: message.text ?? '', createdAt: message.createdAt ?? new Date().toISOString(),
+    attachments: [message.imageUrl ? { id: message.id, type: 'image' as const, name: 'ภาพ', mimeType: 'image/jpeg', url: message.imageUrl } : null,
+      message.audioUrl ? { id: message.id, type: 'audio' as const, name: 'เสียง', mimeType: 'audio/wav', url: message.audioUrl } : null].filter((item): item is ApiAttachment => item !== null),
+    diseaseDetection: message.disease, knockAnalysis: message.knock, status: 'sent', modelVersion: message.modelVersion,
+  }));
+}
 
 /** Mirrors `RETRYABLE_STATUS` in `server.ts`. */
 const RETRYABLE_STATUS = new Set([408, 425, 429, 502, 503, 504]);
@@ -527,19 +544,27 @@ export type ChatMode = 'general' | 'knock-analysis' | 'transcription' | 'disease
 /* ───────────────────────────── Endpoints ───────────────────────────── */
 
 export const api = {
-  health: () =>
-    request<{ status: string; service: string; uptimeSeconds: number; environment: string }>('/health', {
-      timeout: 5_000,
-    }),
+  health: async () => {
+    if (!USE_BROWSER_ENGINES) return request<{ status: string; service: string; uptimeSeconds: number; environment: string }>('/health', { timeout: 5_000 });
+    const vision = await browserVision.modelStatus().then(() => true, () => false);
+    return { status: vision ? 'ok' : 'degraded', service: 'browser-engines', uptimeSeconds: performance.now() / 1000, environment: 'browser',
+      engines: { vision, acoustic: true, chat: statelessChat.configuredGeminiKey() ? 'gemini-key-present' : 'reviewed-knowledge' } };
+  },
 
   /* Conversations */
-  listConversations: () => request<ApiConversation[]>('/conversations'),
+  listConversations: () => USE_BROWSER_ENGINES ? Promise.resolve().then(() => getLocalConversations(true)) : request<ApiConversation[]>('/conversations'),
 
-  createConversation: (body: { title?: string; chatMode?: ChatMode }) =>
-    request<ApiConversation>('/conversations', { method: 'POST', body }),
+  createConversation: (body: { title?: string; chatMode?: ChatMode }) => {
+    if (!USE_BROWSER_ENGINES) return request<ApiConversation>('/conversations', { method: 'POST', body });
+    getLocalConversations(true);
+    const now = new Date().toISOString();
+    const conversation: ApiConversation = { id: newLocalId(), title: body.title ?? 'บทสนทนาใหม่', chatMode: body.chatMode ?? 'general',
+      createdAt: now, updatedAt: now, isPinned: false, messageCount: 0 };
+    saveLocalConversation(conversation);
+    return Promise.resolve(conversation);
+  },
 
-  listMessages: (conversationId: string) =>
-    request<ApiMessage[]>(`/conversations/${encodeURIComponent(conversationId)}/messages`),
+  listMessages: (conversationId: string) => USE_BROWSER_ENGINES ? Promise.resolve(localMessages(conversationId)) : request<ApiMessage[]>(`/conversations/${encodeURIComponent(conversationId)}/messages`),
 
   /**
    * Sends one chat turn. Pass `imageBase64` (or `attachment_ids` from
@@ -559,15 +584,45 @@ export const api = {
       /** Guest-only context from device storage; the server never stores guest threads. */
       history?: { role: 'user' | 'assistant'; content: string }[];
     },
-  ) =>
-    request<ApiMessage>(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
-      method: 'POST',
-      body,
-      timeout: 120_000,
-    }),
+  ) => {
+    if (!USE_BROWSER_ENGINES) return request<ApiMessage>(`/conversations/${encodeURIComponent(conversationId)}/messages`, { method: 'POST', body, timeout: 120_000 });
+    const history = body.history ?? getLocalMessages(conversationId, true)
+      .filter((message) => !message.failed && message.text?.trim())
+      .slice(-12).map((message) => ({ role: message.role, content: message.text!.trim() }));
+    return statelessChat.reply({ ...body, history }).then((answer): ApiMessage => {
+      const createdAt = new Date().toISOString();
+      const assistant: ApiMessage = { id: newLocalId(), conversationId, role: 'assistant', content: answer.content,
+        attachments: [], diseaseDetection: answer.diseaseDetection, createdAt, status: 'sent', modelVersion: answer.modelVersion };
+      const previous = getLocalMessages(conversationId, true);
+      const latest = previous.at(-1);
+      // ChatAssistant saves the user bubble before calling this method and
+      // saves our reply after it returns. Standalone API callers need both turns
+      // persisted here; doing so for the screen would duplicate its bubbles.
+      const screenOwnsTurns = latest?.role === 'user' && (latest.text ?? '') === body.content
+        && (!body.imageBase64 || latest.imageUrl === body.imageBase64)
+        && Date.now() - new Date(latest.createdAt ?? 0).getTime() < 60_000;
+      if (!screenOwnsTurns) {
+        const user: FeedMessage = { id: newLocalId(), role: 'user', time: '', text: body.content,
+          imageUrl: body.imageBase64, createdAt };
+        saveLocalMessages(conversationId, [...previous, user, { ...toFeedMessage(assistant), createdAt }]);
+        const existing = getLocalConversations(true).find((conversation) => conversation.id === conversationId);
+        saveLocalConversation({ id: conversationId, title: existing?.title ?? (body.content.slice(0, 30) || 'ตรวจโรคจากภาพถ่าย'),
+          lastMessage: answer.content.slice(0, 40), createdAt: existing?.createdAt ?? createdAt, updatedAt: createdAt,
+          isPinned: existing?.isPinned ?? false, chatMode: existing?.chatMode ?? body.mode ?? 'general',
+          messageCount: (existing?.messageCount ?? 0) + 2 });
+        const persisted = getLocalMessages(conversationId, true).some((message) => message.id === assistant.id);
+        if (!persisted) assistant.content += '\n\n⚠️ บันทึกประวัติการสนทนาในอุปกรณ์ไม่ได้';
+      }
+      return assistant;
+    });
+  },
 
-  deleteConversation: (conversationId: string) =>
-    request<{ success: boolean }>(`/conversations/${encodeURIComponent(conversationId)}`, { method: 'DELETE' }),
+  deleteConversation: (conversationId: string) => {
+    if (!USE_BROWSER_ENGINES) return request<{ success: boolean }>(`/conversations/${encodeURIComponent(conversationId)}`, { method: 'DELETE' });
+    getLocalConversations(true);
+    deleteLocalConversation(conversationId);
+    return Promise.resolve({ success: true });
+  },
 
   /* Uploads */
   uploadFile: (body: { name: string; mimeType: string; fileData: string }) =>
@@ -606,12 +661,35 @@ export const api = {
      * และประวัติถูกเก็บไว้ในเครื่องผู้ใช้เองตามบัญชีที่ใช้งานอยู่
      */
     conversationId?: string;
-  }) =>
-    request<DiseaseDetection & ScanFiling>('/watermelon/disease-detect', {
-      method: 'POST',
-      body,
-      timeout: 60_000,
-    }),
+  }) => {
+    if (!USE_BROWSER_ENGINES) return request<DiseaseDetection & ScanFiling>('/watermelon/disease-detect', { method: 'POST', body, timeout: 60_000 });
+    return (async (): Promise<DiseaseDetection & ScanFiling> => {
+      const prediction = await browserVision.predictLegacy4(body.imageBase64, body.mode);
+      const detection = buildDetection(prediction);
+      const recordId = newLocalId(), detectedAt = new Date().toISOString();
+      const record: DiseaseRecord = { id: recordId, detectedAt, farmId: body.farmId ?? '', notes: body.notes ?? '',
+        status: detection.status, disease_id: detection.disease_id, thai_name: detection.thai_name,
+        confidence_percentage: detection.confidence_percentage, severity: detection.severity,
+        severity_level: detection.severity_level, urgent_action: detection.urgent_action,
+        phi_days: detection.phi_days, model_version: detection.model_version, from_verified_model: true };
+      getLocalDiseaseHistory(true);
+      saveLocalDiseaseRecord(record);
+      const conversationId = body.conversationId ?? newLocalId();
+      const previous = getLocalConversations(true).find((conv) => conv.id === conversationId);
+      saveLocalConversation({ id: conversationId, title: previous?.title ?? 'ตรวจโรคจากภาพถ่าย', lastMessage: detection.thai_name,
+        createdAt: previous?.createdAt ?? detectedAt, updatedAt: detectedAt, isPinned: previous?.isPinned ?? false,
+        chatMode: 'disease-diagnosis', messageCount: (previous?.messageCount ?? 0) + 2 });
+      const turns: FeedMessage[] = [
+        { id: newLocalId(), role: 'user', time: '', imageUrl: body.imageBase64, text: body.notes, createdAt: detectedAt },
+        { id: newLocalId(), role: 'assistant', time: '', text: detection.urgent_action, disease: detection, createdAt: detectedAt },
+      ];
+      saveLocalMessages(conversationId, [...getLocalMessages(conversationId, true), ...turns]);
+      const historyPersisted = getLocalDiseaseHistory(true).some((item) => item.id === recordId)
+        && getLocalMessages(conversationId, true).some((item) => item.id === turns[1].id);
+      return { ...detection, recordId, detectedAt, conversationId, historyPersisted,
+        historyNote: historyPersisted ? 'บันทึกไว้ในอุปกรณ์นี้' : 'บันทึกประวัติในอุปกรณ์ไม่ได้ กรุณาตรวจสอบพื้นที่เก็บข้อมูลของเบราว์เซอร์' };
+    })();
+  },
 
   /**
    * เครื่องยนต์ที่เปิดใช้ได้ พร้อมข้อดีข้อจำกัดของแต่ละตัว
@@ -620,7 +698,7 @@ export const api = {
    * `calibrated` คือฟิลด์ที่สำคัญที่สุด: ถ้าเป็น false ห้ามเขียนกำกับว่าตัวเลข
    * ความมั่นใจคือความน่าจะเป็น
    */
-  visionEngines: () => request<VisionEngineList>('/watermelon/vision-engines', { timeout: 8_000 }),
+  visionEngines: () => USE_BROWSER_ENGINES ? browserVision.visionEngines() : request<VisionEngineList>('/watermelon/vision-engines', { timeout: 8_000 }),
 
   /**
    * อ่านภาพเดียวด้วยเครื่องยนต์ที่ระบุ คืนผลดิบและข้อสังเกตจากเซอร์วิส
@@ -631,20 +709,26 @@ export const api = {
     engine?: VisionEngineName;
     mode?: 'fast' | 'balanced' | 'deep';
     notes?: string;
-  }) =>
-    request<VisionCompareResponse>('/watermelon/vision-compare', {
-      method: 'POST',
-      body,
-      timeout: body.engine === 'claude' ? 180_000 : 60_000,
-    }),
+  }) => USE_BROWSER_ENGINES
+    ? browserVision.compare(body.imageBase64, body.engine, body.mode)
+    : request<VisionCompareResponse>('/watermelon/vision-compare', { method: 'POST', body, timeout: body.engine === 'claude' ? 180_000 : 60_000 }),
 
-  diseaseCatalog: () => request<DiseaseCatalog>('/watermelon/disease-catalog'),
+  diseaseCatalog: () => USE_BROWSER_ENGINES ? Promise.resolve<DiseaseCatalog>({
+    success: true, count: DISEASES.length,
+    model: { architecture: MODEL_SUMMARY.architecture, accuracy: MODEL_SUMMARY.accuracy, macroF1: MODEL_SUMMARY.macroF1,
+      testImages: MODEL_SUMMARY.testImages, provenance: MODEL_SUMMARY.provenance, detectable_count: 3, out_of_scope_diseases: OUT_OF_SCOPE_DISEASES },
+    diseases: DISEASES.map((disease) => ({ ...disease, symptoms: [...disease.symptoms], detectable_from_photo: modelCoverage(disease.id) !== null, model_metrics: modelCoverage(disease.id) })),
+  }) : request<DiseaseCatalog>('/watermelon/disease-catalog'),
 
   /**
    * Whether the vision service is reachable. Returns 503 when it is not, so
    * a screen can disable its camera button instead of failing on submit.
    */
-  diseaseModelStatus: () => request<DiseaseModelStatus>('/watermelon/disease-model', { timeout: 8_000 }),
+  diseaseModelStatus: async (): Promise<DiseaseModelStatus> => {
+    if (!USE_BROWSER_ENGINES) return request<DiseaseModelStatus>('/watermelon/disease-model', { timeout: 8_000 });
+    try { return { success: true, online: true, vision: await browserVision.modelStatus(), benchmark: MODEL_SUMMARY }; }
+    catch (error) { return { success: false, online: false, error: error instanceof Error ? error.message : 'โหลดโมเดลไม่ได้', benchmark: MODEL_SUMMARY }; }
+  },
 
   /**
    * Resolves to `{ online: false }` instead of rejecting, so a screen can
@@ -652,6 +736,7 @@ export const api = {
    * The 503 body is the answer here, not a failure.
    */
   acousticModelStatus: async (): Promise<AcousticModelStatus> => {
+    if (USE_BROWSER_ENGINES) return { success: true, online: true, reportsBrix: false, info: browserAcoustic.serviceInfo() };
     try {
       return await request<AcousticModelStatus>('/watermelon/acoustic-model', { timeout: 8_000 });
     } catch (error) {
@@ -663,12 +748,11 @@ export const api = {
   },
 
   /** Measures actual knock audio; never predicts sweetness or ripeness. */
-  analyseKnock: (body: { pcmBase64: string; sampleRate: number; massKg?: number }) =>
-    request<AcousticAnalysis>('/audio/knock-analysis', {
-      method: 'POST',
-      body,
-      timeout: 30_000,
-    }),
+  analyseKnock: (body: { pcmBase64: string; sampleRate: number; massKg?: number }) => {
+    if (!USE_BROWSER_ENGINES) return request<AcousticAnalysis>('/audio/knock-analysis', { method: 'POST', body, timeout: 30_000 });
+    try { return Promise.resolve(browserAcoustic.analyse(body)); }
+    catch (error) { return Promise.reject(error); }
+  },
 
   /** Store a WAV so that a later cut measurement can be paired with this fruit. */
   uploadKnockWav: (body: { filename: string; fileData: string }) =>
@@ -686,10 +770,10 @@ export const api = {
     method: 'POST', body,
   }),
 
-  diseaseHistory: () =>
-    request<{ success: boolean; count: number; unverifiedCount: number; records: DiseaseRecord[] }>(
-      '/watermelon/disease-history',
-    ),
+  diseaseHistory: () => USE_BROWSER_ENGINES ? Promise.resolve((() => {
+    const records = getLocalDiseaseHistory(true);
+    return { success: true, count: records.length, unverifiedCount: records.filter((record) => !record.from_verified_model).length, records };
+  })()) : request<{ success: boolean; count: number; unverifiedCount: number; records: DiseaseRecord[] }>('/watermelon/disease-history'),
 
   varieties: () => request<ApiVariety[]>('/varieties'),
 

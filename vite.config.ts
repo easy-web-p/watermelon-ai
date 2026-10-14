@@ -7,6 +7,8 @@ export default defineConfig(() => {
   const rootDir = typeof import.meta.dirname !== 'undefined' ? import.meta.dirname : path.resolve();
   return {
     plugins: [react(), tailwindcss()],
+    assetsInclude: ['**/*.onnx', '**/*.wasm'],
+    optimizeDeps: { exclude: ['onnxruntime-web'] },
     resolve: {
       dedupe: ['react', 'react-dom'],
       alias: {

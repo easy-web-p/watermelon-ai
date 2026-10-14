@@ -218,13 +218,15 @@ export function mergeServerAndLocalVisionMessages(
 }
 
 /** Local-first persistence: read stored conversations. */
-export function getLocalConversations(): ApiConversation[] {
+export function getLocalConversations(strict = false): ApiConversation[] {
   try {
     const raw = window.localStorage.getItem(scopedKey(CONVERSATION_LIST_STORAGE_KEY));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
+    if (strict && !Array.isArray(parsed)) throw new Error('รูปแบบประวัติการสนทนาไม่ถูกต้อง');
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
+  } catch (error) {
+    if (strict) throw new Error('อ่านประวัติการสนทนาในอุปกรณ์ไม่ได้', { cause: error });
     return [];
   }
 }
@@ -268,13 +270,15 @@ export function deleteLocalConversation(id: string): void {
 }
 
 /** Local-first persistence: read stored messages for a specific conversation. */
-export function getLocalMessages(conversationId: string): FeedMessage[] {
+export function getLocalMessages(conversationId: string, strict = false): FeedMessage[] {
   try {
     const raw = window.localStorage.getItem(scopedKey(`${MESSAGES_STORAGE_KEY_PREFIX}${conversationId}`));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
+    if (strict && !Array.isArray(parsed)) throw new Error('รูปแบบข้อความในอุปกรณ์ไม่ถูกต้อง');
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
+  } catch (error) {
+    if (strict) throw new Error('อ่านข้อความในอุปกรณ์ไม่ได้', { cause: error });
     return [];
   }
 }
@@ -291,13 +295,15 @@ export function saveLocalMessages(conversationId: string, messages: FeedMessage[
 }
 
 /** Local-first persistence: read stored disease diagnosis history. */
-export function getLocalDiseaseHistory(): DiseaseRecord[] {
+export function getLocalDiseaseHistory(strict = false): DiseaseRecord[] {
   try {
     const raw = window.localStorage.getItem(scopedKey(DISEASE_HISTORY_STORAGE_KEY));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
+    if (strict && !Array.isArray(parsed)) throw new Error('รูปแบบประวัติผลสแกนไม่ถูกต้อง');
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
+  } catch (error) {
+    if (strict) throw new Error('อ่านประวัติผลสแกนในอุปกรณ์ไม่ได้', { cause: error });
     return [];
   }
 }

@@ -7,7 +7,7 @@
  * than an honest error, so API calls fail loudly instead of returning a 200.
  */
 
-const VERSION = 'v2.2.0';
+const VERSION = 'v2.3.0';
 const SHELL_CACHE = `watermelon-shell-${VERSION}`;
 const ASSET_CACHE = `watermelon-assets-${VERSION}`;
 
@@ -42,9 +42,18 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-/** Hashed build output never changes under the same name — cache it forever. */
+/**
+ * Immutable assets never change under the same name:
+ * - Hashed build output in /assets/
+ * - Models and weights in /models/
+ * - Standalone .wasm / .onnx binary assets
+ * Cache-first prevents repeating multi-megabyte downloads on metered connections.
+ */
 function isImmutableAsset(url) {
-  return url.pathname.startsWith('/assets/') && /-[A-Za-z0-9_-]{8,}\./.test(url.pathname);
+  if (url.pathname.startsWith('/assets/') && /-[A-Za-z0-9_-]{8,}\./.test(url.pathname)) return true;
+  if (url.pathname.startsWith('/models/')) return true;
+  if (url.pathname.endsWith('.wasm') || url.pathname.endsWith('.onnx')) return true;
+  return false;
 }
 
 self.addEventListener('fetch', (event) => {

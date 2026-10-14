@@ -1,0 +1,122 @@
+name: watermelon-ai
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?PUBLIC_HOST is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: watermelon-api:oci
+    restart: unless-stopped
+    depends_on:
+      vision:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    env_file:
+      - .env.oci
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      TRUST_PROXY: "true"
+      ENABLE_DEMO_OTP: "false"
+      VISION_SERVICE_URL: http://vision:8080
+      VISION_TIMEOUT_MS: "120000"
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - ./state/data:/app/data
+      - ./state/uploads:/app/uploads
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - edge
+      - backend
+
+  vision:
+    build:
+      context: ../../fastapi_service
+      dockerfile: Dockerfile
+    image: watermelon-vision:oci
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      VISION_ENGINE: legacy4
+      VISION_ENABLE_CLAUDE: "0"
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"
+      interval: 20s
+      timeout: 8s
+      retries: 18
+      start_period: 90s
+    networks:
+      - backend
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 20s
+      timeout: 8s
+      retries: 18
+      start_period: 60s
+    networks:
+      - backend
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    profiles: ["bootstrap"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "${LOCAL_CHAT_MODEL:-qwen3.5:4b}"]
+    networks:
+      - backend
+      # Temporary outbound path used only while downloading the model.
+      # Ollama itself remains on the internal-only network with no public port.
+      - edge
+
+networks:
+  edge:
+  backend:
+    internal: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+  ollama_data:

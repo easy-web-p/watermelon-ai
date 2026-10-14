@@ -39,6 +39,13 @@ fastapi_service/engine_report.json
 # User uploaded audio and images
 uploads/
 
+# OCI deployment runtime state and local transfer bundle
+deploy/oci/state/
+watermelon-ai-oci.tar.gz
+
+# Portable verification tools downloaded into the workspace
+.tools/
+
 # Runtime state of the JSON database: the writer lock is pid-specific and the
 # audit trail is append-only evidence, neither of which belongs in a commit.
 data/watermelon_db.lock
@@ -51,3 +58,5 @@ data/*.bak
 
 # ฐานข้อมูลจริงมีข้อมูลส่วนบุคคล (อีเมล เบอร์โทร แชท) — repo เป็น public ห้าม commit
 data/watermelon_db.json
+public/data/watermelon_db.json
+data/private-backups/
