@@ -36,9 +36,11 @@ export function GeminiApiKeyModal({
       setError('กรุณากรอก API Key หรือกด "ลบคีย์" หากต้องการใช้โหมดฟรี');
       return;
     }
-    if (!trimmed.startsWith('AIza')) {
-      setError('API Key ของ Google AI Studio มักจะขึ้นต้นด้วย "AIza..." กรุณาตรวจสอบอีกครั้ง');
-      return;
+    if (!trimmed.startsWith('AIza') && !trimmed.startsWith('AQ.')) {
+      if (trimmed.length < 20) {
+        setError('รูปแบบ API Key ไม่ถูกต้อง กรุณาคัดลอกจาก Google AI Studio (ขึ้นต้นด้วย AIza... หรือ AQ...)');
+        return;
+      }
     }
     setError(null);
     onSaveKey(trimmed);
@@ -67,7 +69,7 @@ export function GeminiApiKeyModal({
                 ตั้งค่า Gemini API Key
               </h2>
               <p className="text-caption text-on-surface-variant">
-                แชทถาม-ตอบได้ไม่จำกัดด้วย Gemini 2.5 Flash
+                แชทถาม-ตอบได้ไม่จำกัดด้วย Gemini 3.8 Flash
               </p>
             </div>
           </div>
@@ -159,7 +161,7 @@ export function GeminiApiKeyModal({
                   setInputKey(e.target.value);
                   setError(null);
                 }}
-                placeholder="วางคีย์ AIzaSy... ที่นี่"
+                placeholder="วางคีย์ AIzaSy... หรือ AQ... ที่นี่"
                 className="w-full rounded-xl border border-outline bg-surface-lowest px-4 py-2.5 text-body-md text-on-surface font-mono placeholder:font-sans placeholder:text-outline focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>

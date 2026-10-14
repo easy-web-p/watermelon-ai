@@ -133,10 +133,10 @@ function AssistantBar({
                   ? 'bg-secondary-container text-on-secondary-fixed-variant hover:bg-secondary hover:text-on-secondary'
                   : 'bg-primary/10 text-primary hover:bg-primary hover:text-on-primary',
               )}
-              title={geminiKey ? 'Gemini 2.5 Flash: เปิดใช้งานคีย์ส่วนตัวแล้ว (คลิกเพื่อแก้ไข/ลบ)' : 'คลิกเพื่อตั้งค่า Gemini API Key (ฟรี)'}
+              title={geminiKey ? 'Gemini 3.8 Flash: เปิดใช้งานคีย์ส่วนตัวแล้ว (คลิกเพื่อแก้ไข/ลบ)' : 'คลิกเพื่อตั้งค่า Gemini API Key (ฟรี)'}
             >
               <Icon name="key" size={13} />
-              <span>{geminiKey ? 'Gemini 2.5 Active' : 'ตั้งค่า Gemini Key'}</span>
+              <span>{geminiKey ? 'Gemini 3.8 Active' : 'ตั้งค่า Gemini Key'}</span>
             </button>
             {ownership && (
               <span
@@ -269,7 +269,7 @@ function MessageRow({
                     ต้องการถามคำถามทั่วไป หรือคุยได้ไม่จำกัด?
                   </h4>
                   <p className="text-caption text-on-surface-variant leading-relaxed">
-                    คุณสามารถขอรับ Gemini API Key ฟรีจาก Google AI Studio แล้วนำมาใส่ เพื่อใช้โมเดล Gemini 2.5 Flash คุยได้ทุกหัวข้อ
+                    คุณสามารถขอรับ Gemini API Key ฟรีจาก Google AI Studio แล้วนำมาใส่ เพื่อใช้โมเดล Gemini 3.8 Flash คุยได้ทุกหัวข้อ
                   </p>
                 </div>
               </div>

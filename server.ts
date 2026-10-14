@@ -439,7 +439,7 @@ if (historyPolicy.backend === "firestore") {
 
 const chatCostPolicy = chatModelPolicy();
 let chatGoogle: ReturnType<typeof createGoogle> | null = null;
-const chatModelName = (process.env.GEMINI_CHAT_MODEL ?? "gemini-2.5-flash").trim();
+const chatModelName = (process.env.GEMINI_CHAT_MODEL ?? "gemini-3.8-flash").trim();
 if (chatCostPolicy.enabled) {
   chatGoogle = createGoogle({ apiKey: (process.env.GEMINI_API_KEY ?? "").trim() });
 } else if (chatCostPolicy.reason) {
